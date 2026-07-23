@@ -298,6 +298,50 @@ describe("Agent", () => {
 		expect(receivedSignal?.aborted).toBe(true);
 	});
 
+	it.each(["constructor", "runtime"] as const)(
+		"forwards a %s shouldStopAfterTurn callback before another provider request",
+		async (configuration) => {
+			const tool: AgentTool<ReturnType<typeof Type.Object>> = {
+				name: "echo",
+				label: "Echo",
+				description: "Returns a tool result",
+				parameters: Type.Object({}),
+				execute: async () => ({ content: [{ type: "text", text: "tool-result" }], details: {} }),
+			};
+			let requestCount = 0;
+			const shouldStopAfterTurn = ({ toolResults }: { toolResults: unknown[] }) => toolResults.length > 0;
+			const agent = new Agent({
+				initialState: { tools: [tool] },
+				streamFn: () => {
+					requestCount++;
+					const stream = new MockAssistantStream();
+					queueMicrotask(() => {
+						const message =
+							requestCount === 1
+								? createAssistantToolUseMessage([
+										{ type: "toolCall", id: "call-1", name: "echo", arguments: {} },
+									])
+								: createAssistantMessage("unexpected second response");
+						stream.push({ type: "done", reason: requestCount === 1 ? "toolUse" : "stop", message });
+					});
+					return stream;
+				},
+				...(configuration === "constructor" ? { shouldStopAfterTurn } : {}),
+			});
+			if (configuration === "runtime") {
+				agent.shouldStopAfterTurn = shouldStopAfterTurn;
+			}
+
+			await agent.prompt("run tool");
+
+			expect(requestCount).toBe(1);
+			expect(agent.state.messages.at(-1)).toMatchObject({
+				role: "toolResult",
+				content: [{ type: "text", text: "tool-result" }],
+			});
+		},
+	);
+
 	it("should ignore tool updates after the tool execution settles", async () => {
 		const toolSchema = Type.Object({});
 		let delayedUpdate: AgentToolUpdateCallback<{ status: string }> | undefined;

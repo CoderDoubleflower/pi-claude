@@ -22,9 +22,10 @@ import type {
 	AgentState,
 	AgentTool,
 	PrepareNextTurnContext,
+	ShouldStopAfterTurnContext,
 	ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
-import { contentText } from "@earendil-works/pi-ai";
+import { contentText, estimateContextTokens as estimateLlmContextTokens } from "@earendil-works/pi-ai";
 import type {
 	AssistantMessage,
 	AuthResult,
@@ -92,7 +93,7 @@ import {
 	wrapRegisteredTools,
 } from "./extensions/index.ts";
 import { emitSessionShutdownEvent } from "./extensions/runner.ts";
-import type { BashExecutionMessage, CustomMessage } from "./messages.ts";
+import { type BashExecutionMessage, type CustomMessage, convertToLlm } from "./messages.ts";
 import { ModelRegistry } from "./model-registry.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
 import { expandPromptTemplate, type PromptTemplate } from "./prompt-templates.ts";
@@ -325,6 +326,8 @@ export class AgentSession {
 	private _compactionAbortController: AbortController | undefined = undefined;
 	private _autoCompactionAbortController: AbortController | undefined = undefined;
 	private _overflowRecoveryAttempted = false;
+	private _hostStopRequested = false;
+	private _midTurnCompactionNeeded = false;
 
 	// Branch summarization state
 	private _branchSummaryAbortController: AbortController | undefined = undefined;
@@ -393,6 +396,7 @@ export class AgentSession {
 		this._unsubscribeAgent = this.agent.subscribe(this._handleAgentEvent);
 		this._installAgentToolHooks();
 		this._installAgentNextTurnRefresh();
+		this._installMidTurnCompactionHook();
 
 		this._buildRuntime({
 			activeToolNames: this._initialActiveToolNames,
@@ -538,6 +542,36 @@ export class AgentSession {
 				thinkingLevel: this.agent.state.thinkingLevel,
 			};
 		};
+	}
+
+	private _installMidTurnCompactionHook(): void {
+		const previousShouldStop = this.agent.shouldStopAfterTurn;
+		this.agent.shouldStopAfterTurn = async (context) => {
+			if (await previousShouldStop?.(context)) {
+				this._hostStopRequested = true;
+				return true;
+			}
+			return this._midTurnShouldStop(context);
+		};
+	}
+
+	private _midTurnShouldStop(context: ShouldStopAfterTurnContext): boolean {
+		if ((!context.willContinue && !this.agent.hasQueuedMessages()) || context.toolResults.length === 0) return false;
+
+		const settings = this.settingsManager.getCompactionSettings();
+		const contextWindow = this.model?.contextWindow ?? 0;
+		if (!settings.enabled || contextWindow === 0) return false;
+
+		const contextTokens = estimateLlmContextTokens({
+			systemPrompt: context.context.systemPrompt,
+			messages: convertToLlm(context.context.messages),
+			tools: context.context.tools,
+		}).tokens;
+		if (shouldCompact(contextTokens, contextWindow, settings)) {
+			this._midTurnCompactionNeeded = true;
+			return true;
+		}
+		return false;
 	}
 
 	// =========================================================================
@@ -1073,6 +1107,16 @@ export class AgentSession {
 	}
 
 	private async _handlePostAgentRun(): Promise<boolean> {
+		if (this._hostStopRequested) {
+			this._hostStopRequested = false;
+			this._lastAssistantMessage = undefined;
+			return false;
+		}
+		if (this._midTurnCompactionNeeded) {
+			this._midTurnCompactionNeeded = false;
+			return await this._runAutoCompaction("threshold", false, true);
+		}
+
 		const msg = this._lastAssistantMessage;
 		this._lastAssistantMessage = undefined;
 		if (!msg) {
@@ -2044,7 +2088,11 @@ export class AgentSession {
 	/**
 	 * Internal: Run auto-compaction with events.
 	 */
-	private async _runAutoCompaction(reason: "overflow" | "threshold", willRetry: boolean): Promise<boolean> {
+	private async _runAutoCompaction(
+		reason: "overflow" | "threshold",
+		willRetry: boolean,
+		continueAfterCompaction = false,
+	): Promise<boolean> {
 		const settings = this.settingsManager.getCompactionSettings();
 		let started = false;
 
@@ -2179,8 +2227,29 @@ export class AgentSession {
 				usage,
 				details,
 			};
-			this._emit({ type: "compaction_end", reason, result, aborted: false, willRetry });
+			const estimatedLlmContextTokensAfter = estimateLlmContextTokens({
+				systemPrompt: this.agent.state.systemPrompt,
+				messages: convertToLlm(sessionContext.messages),
+				tools: this.agent.state.tools,
+			}).tokens;
+			const retainedContextTooLarge =
+				continueAfterCompaction &&
+				shouldCompact(estimatedLlmContextTokensAfter, this.model?.contextWindow ?? 0, settings);
+			this._emit({
+				type: "compaction_end",
+				reason,
+				result,
+				aborted: false,
+				willRetry,
+				...(retainedContextTooLarge
+					? {
+							errorMessage:
+								"Auto-compaction retained context above threshold; stopping before next provider request.",
+						}
+					: {}),
+			});
 
+			if (retainedContextTooLarge) return false;
 			if (willRetry) {
 				const messages = this.agent.state.messages;
 				const lastMsg = messages[messages.length - 1];
@@ -2189,6 +2258,7 @@ export class AgentSession {
 				}
 				return true;
 			}
+			if (continueAfterCompaction) return true;
 
 			// Auto-compaction can complete while follow-up/steering/custom messages are waiting.
 			// Continue once so queued messages are delivered.
