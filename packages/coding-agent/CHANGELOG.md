@@ -6,6 +6,10 @@
 
 - Changed interactive built-in and extension tool calls to show a compact command with orange running, green success, and red failure indicators; running output now previews only the latest five visual lines and completed output is hidden.
 
+### Fixed
+
+- Added a status line when the tool output expansion is toggled ([#7180](https://github.com/earendil-works/pi/issues/7180)).
+
 ## [0.82.1] - 2026-07-25
 
 ### New Features
