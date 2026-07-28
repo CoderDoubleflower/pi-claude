@@ -81,6 +81,7 @@ vim ~/.pi/agent/themes/my-theme.json
     "toolErrorBg": "#2e1e1e",
     "toolTitle": "primary",
     "toolOutput": "",
+    "toolRunning": "#f59e0b",
     "mdHeading": "#ffaa00",
     "mdLink": "primary",
     "mdLinkUrl": "secondary",
@@ -140,13 +141,13 @@ vim ~/.pi/agent/themes/my-theme.json
 
 - `name` is required, must be unique, and must not contain `/`.
 - `vars` is optional. Define reusable colors here, then reference them in `colors`.
-- `colors` must define all 51 required tokens. `thinkingMax` is optional and falls back to `thinkingXhigh`.
+- `colors` must define all 51 required tokens. `thinkingMax` and `toolRunning` are optional; they fall back to `thinkingXhigh` and `warning`, respectively.
 
 The `$schema` field enables editor auto-completion and validation.
 
 ## Color Tokens
 
-Every theme must define all 51 required color tokens. `thinkingMax` is optional for compatibility with existing themes; when omitted, it uses `thinkingXhigh`.
+Every theme must define all 51 required color tokens. `thinkingMax` and `toolRunning` are optional for compatibility with existing themes; when omitted, they use `thinkingXhigh` and `warning`, respectively.
 
 ### Core UI (11 colors)
 
@@ -164,7 +165,7 @@ Every theme must define all 51 required color tokens. `thinkingMax` is optional 
 | `text` | Default text (usually `""`) |
 | `thinkingText` | Thinking block text |
 
-### Backgrounds & Content (11 colors)
+### Backgrounds & Content (11 required, 1 optional)
 
 | Token | Purpose |
 |-------|---------|
@@ -179,6 +180,7 @@ Every theme must define all 51 required color tokens. `thinkingMax` is optional 
 | `toolErrorBg` | Tool box (error) |
 | `toolTitle` | Tool title |
 | `toolOutput` | Tool output text |
+| `toolRunning` | Running status indicator; optional, falls back to `warning` |
 
 ### Markdown (10 colors)
 

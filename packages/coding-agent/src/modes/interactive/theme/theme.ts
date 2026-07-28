@@ -33,7 +33,7 @@ const ThemeJsonSchema = Type.Object({
 	name: Type.String(),
 	vars: Type.Optional(Type.Record(Type.String(), ColorValueSchema)),
 	colors: Type.Object({
-		// Core UI (10 colors)
+		// Core UI (11 colors)
 		accent: ColorValueSchema,
 		border: ColorValueSchema,
 		borderAccent: ColorValueSchema,
@@ -45,7 +45,7 @@ const ThemeJsonSchema = Type.Object({
 		dim: ColorValueSchema,
 		text: ColorValueSchema,
 		thinkingText: ColorValueSchema,
-		// Backgrounds & Content Text (11 colors)
+		// Backgrounds & Content Text (11 required, 1 optional)
 		selectedBg: ColorValueSchema,
 		userMessageBg: ColorValueSchema,
 		userMessageText: ColorValueSchema,
@@ -57,6 +57,7 @@ const ThemeJsonSchema = Type.Object({
 		toolErrorBg: ColorValueSchema,
 		toolTitle: ColorValueSchema,
 		toolOutput: ColorValueSchema,
+		toolRunning: Type.Optional(ColorValueSchema),
 		// Markdown (10 colors)
 		mdHeading: ColorValueSchema,
 		mdLink: ColorValueSchema,
@@ -123,6 +124,7 @@ export type ThemeColor =
 	| "customMessageLabel"
 	| "toolTitle"
 	| "toolOutput"
+	| "toolRunning"
 	| "mdHeading"
 	| "mdLink"
 	| "mdLinkUrl"
@@ -319,13 +321,22 @@ function resolveThemeColors<T extends Record<string, ColorValue>>(
 	return resolved as Record<keyof T, string | number>;
 }
 
-function withThemeColorFallbacks(colors: ThemeJson["colors"]): ThemeJson["colors"] & { thinkingMax: ColorValue } {
-	return { ...colors, thinkingMax: colors.thinkingMax ?? colors.thinkingXhigh };
+function withThemeColorFallbacks(
+	colors: ThemeJson["colors"],
+): ThemeJson["colors"] & { thinkingMax: ColorValue; toolRunning: ColorValue } {
+	return {
+		...colors,
+		thinkingMax: colors.thinkingMax ?? colors.thinkingXhigh,
+		toolRunning: colors.toolRunning ?? colors.warning,
+	};
 }
 
 // ============================================================================
 // Theme Class
 // ============================================================================
+
+type ThemeForegroundColors = Record<Exclude<ThemeColor, "toolRunning">, string | number> &
+	Partial<Record<"toolRunning", string | number>>;
 
 export class Theme {
 	readonly name?: string;
@@ -336,7 +347,7 @@ export class Theme {
 	private mode: ColorMode;
 
 	constructor(
-		fgColors: Record<ThemeColor, string | number>,
+		fgColors: ThemeForegroundColors,
 		bgColors: Record<ThemeBg, string | number>,
 		mode: ColorMode,
 		options: { name?: string; sourcePath?: string; sourceInfo?: SourceInfo } = {},
@@ -346,7 +357,11 @@ export class Theme {
 		this.sourceInfo = options.sourceInfo;
 		this.mode = mode;
 		this.fgColors = new Map();
-		const colors = { ...fgColors, thinkingMax: fgColors.thinkingMax ?? fgColors.thinkingXhigh };
+		const colors = {
+			...fgColors,
+			thinkingMax: fgColors.thinkingMax ?? fgColors.thinkingXhigh,
+			toolRunning: fgColors.toolRunning ?? fgColors.warning,
+		};
 		for (const [key, value] of Object.entries(colors) as [ThemeColor, string | number][]) {
 			this.fgColors.set(key, fgAnsi(value, mode));
 		}

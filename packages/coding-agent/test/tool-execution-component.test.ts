@@ -35,7 +35,7 @@ describe("ToolExecutionComponent parity", () => {
 		initTheme("dark");
 	});
 
-	test("stacks custom call and result renderers like the old implementation", () => {
+	test("shows the call and hides custom result output after completion", () => {
 		const toolDefinition: ToolDefinition = {
 			...createBaseToolDefinition(),
 			renderCall: () => new Text("custom call", 0, 0),
@@ -51,7 +51,9 @@ describe("ToolExecutionComponent parity", () => {
 			createFakeTui(),
 			process.cwd(),
 		);
-		expect(stripAnsi(component.render(120).join("\n"))).toContain("custom call");
+		const running = component.render(120).join("\n");
+		expect(stripAnsi(running)).toContain("custom call");
+		expect(running).toContain(theme.fg("toolRunning", "●"));
 
 		component.updateResult(
 			{
@@ -62,12 +64,15 @@ describe("ToolExecutionComponent parity", () => {
 			false,
 		);
 
-		const rendered = stripAnsi(component.render(120).join("\n"));
+		const completed = component.render(120).join("\n");
+		const rendered = stripAnsi(completed);
 		expect(rendered).toContain("custom call");
-		expect(rendered).toContain("custom result");
+		expect(rendered).not.toContain("custom result");
+		expect(rendered).not.toContain("done");
+		expect(completed).toContain(theme.fg("success", "●"));
 	});
 
-	test("self-rendered empty tool rows take no layout space", () => {
+	test("self-rendered empty tool rows fall back to a status summary", () => {
 		const toolDefinition: ToolDefinition = {
 			...createBaseToolDefinition(),
 			renderShell: "self",
@@ -84,7 +89,9 @@ describe("ToolExecutionComponent parity", () => {
 			createFakeTui(),
 			process.cwd(),
 		);
-		expect(component.render(120)).toEqual([]);
+		const running = component.render(120).join("\n");
+		expect(stripAnsi(running)).toContain("custom_tool");
+		expect(running).toContain(theme.fg("toolRunning", "●"));
 
 		component.updateResult(
 			{
@@ -95,7 +102,69 @@ describe("ToolExecutionComponent parity", () => {
 			false,
 		);
 
-		expect(component.render(120)).toEqual([]);
+		const completed = component.render(120).join("\n");
+		expect(stripAnsi(completed)).toContain("custom_tool");
+		expect(completed).toContain(theme.fg("success", "●"));
+	});
+
+	test("shows a compact call and only the latest five visual output lines while running", () => {
+		const toolDefinition: ToolDefinition = {
+			...createBaseToolDefinition(),
+			renderCall: () => new Text("custom call\n\ncall detail", 0, 0),
+			renderResult: () => new Text("custom rendered result", 0, 0),
+		};
+		const component = new ToolExecutionComponent(
+			"custom_tool",
+			"tool-preview",
+			{},
+			{},
+			toolDefinition,
+			createFakeTui(),
+			process.cwd(),
+		);
+		component.markExecutionStarted();
+
+		component.updateResult(
+			{
+				content: [{ type: "text", text: "line-1\nline-2\nline-3\nline-4\nline-5\nline-6\nline-7" }],
+				details: {},
+				isError: false,
+			},
+			true,
+		);
+
+		const rendered = stripAnsi(component.render(120).join("\n"));
+		expect(rendered).toContain("custom call");
+		expect(rendered).not.toContain("call detail");
+		expect(rendered).not.toContain("line-1");
+		expect(rendered).not.toContain("line-2");
+		expect(rendered).toContain("line-3");
+		expect(rendered).toContain("line-7");
+		expect(rendered).not.toContain("custom rendered result");
+
+		component.setExpanded(true);
+		const expanded = stripAnsi(component.render(120).join("\n"));
+		expect(expanded).toContain("custom rendered result");
+	});
+
+	test("preserves complete multi-line bash commands", () => {
+		const command = "printf 'one'\n\nprintf 'two'";
+		const tool = createBashToolDefinition(process.cwd(), { exposeSessionEnvironment: false });
+		const component = new ToolExecutionComponent(
+			"bash",
+			"tool-multiline-bash",
+			{ command },
+			{},
+			tool,
+			createFakeTui(),
+			process.cwd(),
+		);
+		component.markExecutionStarted();
+		component.updateResult({ content: [{ type: "text", text: "running" }], isError: false }, true);
+
+		const rendered = stripAnsi(component.render(120).join("\n"));
+		expect(rendered).toContain("printf 'one'");
+		expect(rendered).toContain("printf 'two'");
 	});
 
 	test("uses built-in rendering for built-in overrides without custom renderers", () => {
@@ -154,7 +223,7 @@ describe("ToolExecutionComponent parity", () => {
 		await promise;
 	});
 
-	test("bash renderer does not duplicate final full output truncation details", async () => {
+	test("bash completion hides final output and truncation details", async () => {
 		const operations: BashOperations = {
 			exec: async (_command, _cwd, { onData }) => {
 				for (let i = 1; i <= 4000; i++) {
@@ -184,11 +253,10 @@ describe("ToolExecutionComponent parity", () => {
 		component.updateResult({ ...result, isError: false }, false);
 
 		const rendered = stripAnsi(component.render(200).join("\n"));
-		expect(rendered.match(/Full output:/g)?.length ?? 0).toBe(1);
-		expect(rendered).toMatch(/line-4000[^\n]*\n[^\S\n]*\n \[Full output:/);
-		expect(rendered).not.toMatch(/line-4000[^\n]*\n[^\S\n]*\n[^\S\n]*\n \[Full output:/);
-		expect(rendered).toContain("Truncated: showing 2000 of 4000 lines");
-		expect(rendered).not.toContain("[Showing lines 2001-4000 of 4000. Full output:");
+		expect(rendered).toContain("$ generate output");
+		expect(rendered).not.toContain("line-4000");
+		expect(rendered).not.toContain("Full output:");
+		expect(rendered).not.toContain("Truncated:");
 	});
 
 	test("does not duplicate built-in headers when passed the active built-in definition", () => {
@@ -225,7 +293,7 @@ describe("ToolExecutionComponent parity", () => {
 		component.setExpanded(true);
 		const rendered = stripAnsi(component.render(120).join("\n"));
 		expect(rendered).toContain("override call");
-		expect(rendered).toContain("hello");
+		expect(rendered).not.toContain("hello");
 	});
 
 	test("inherits missing built-in call renderer slot from the built-in tool", () => {
@@ -247,7 +315,7 @@ describe("ToolExecutionComponent parity", () => {
 		const rendered = stripAnsi(component.render(120).join("\n"));
 		expect(rendered).toContain("read");
 		expect(rendered).toContain("README.md");
-		expect(rendered).toContain("override result");
+		expect(rendered).not.toContain("override result");
 	});
 
 	test("uses custom renderers for built-in overrides that reuse built-in definition parameters", () => {
@@ -268,7 +336,7 @@ describe("ToolExecutionComponent parity", () => {
 		component.updateResult({ content: [{ type: "text", text: "hello" }], details: undefined, isError: false }, false);
 		const rendered = stripAnsi(component.render(120).join("\n"));
 		expect(rendered).toContain("override call");
-		expect(rendered).toContain("override result");
+		expect(rendered).not.toContain("override result");
 		expect(rendered).not.toContain("read README.md");
 	});
 
@@ -291,11 +359,12 @@ describe("ToolExecutionComponent parity", () => {
 		component.updateResult({ content: [{ type: "text", text: "hello" }], details: undefined, isError: false }, false);
 		const rendered = stripAnsi(component.render(120).join("\n"));
 		expect(rendered).toContain("wrapped override call");
-		expect(rendered).toContain("wrapped override result");
+		expect(rendered).not.toContain("wrapped override result");
 	});
 
-	test("shares renderer state across custom call and result slots", () => {
+	test("shares renderer state while hiding the completed result component", () => {
 		type RenderState = { token?: string };
+		let resultToken: string | undefined;
 		const toolDefinition: ToolDefinition<any, unknown, RenderState> = {
 			...createBaseToolDefinition(),
 			renderCall: (_args, _theme, context) => {
@@ -303,6 +372,7 @@ describe("ToolExecutionComponent parity", () => {
 				return new Text(`custom call ${context.state.token}`, 0, 0);
 			},
 			renderResult: (_result, _options, _theme, context) => {
+				resultToken = context.state.token;
 				return new Text(`custom result ${context.state.token}`, 0, 0);
 			},
 		};
@@ -318,16 +388,20 @@ describe("ToolExecutionComponent parity", () => {
 		);
 		component.updateResult({ content: [{ type: "text", text: "done" }], details: {}, isError: false }, false);
 		const rendered = stripAnsi(component.render(120).join("\n"));
+		expect(resultToken).toBe("shared-token");
 		expect(rendered).toContain("custom call shared-token");
-		expect(rendered).toContain("custom result shared-token");
+		expect(rendered).not.toContain("custom result shared-token");
 	});
 
-	test("exposes args in render result context", () => {
+	test("exposes args to a completed result renderer without displaying it", () => {
+		let resultArg: string | undefined;
 		const toolDefinition: ToolDefinition = {
 			...createBaseToolDefinition(),
 			renderCall: () => new Text("call", 0, 0),
-			renderResult: (_result, _options, _theme, context) =>
-				new Text(`arg:${String((context.args as { foo: string }).foo)}`, 0, 0),
+			renderResult: (_result, _options, _theme, context) => {
+				resultArg = (context.args as { foo: string }).foo;
+				return new Text(`arg:${resultArg}`, 0, 0);
+			},
 		};
 
 		const component = new ToolExecutionComponent(
@@ -341,7 +415,8 @@ describe("ToolExecutionComponent parity", () => {
 		);
 		component.updateResult({ content: [{ type: "text", text: "done" }], details: {}, isError: false }, false);
 		const rendered = stripAnsi(component.render(120).join("\n"));
-		expect(rendered).toContain("arg:bar");
+		expect(resultArg).toBe("bar");
+		expect(rendered).not.toContain("arg:bar");
 	});
 
 	test("falls back when custom renderers are absent", () => {
@@ -361,7 +436,37 @@ describe("ToolExecutionComponent parity", () => {
 		component.updateResult({ content: [{ type: "text", text: "done" }], details: {}, isError: false }, false);
 		const rendered = stripAnsi(component.render(120).join("\n"));
 		expect(rendered).toContain("custom_tool");
-		expect(rendered).toContain("done");
+		expect(rendered).toContain("foo");
+		expect(rendered).toContain("bar");
+		expect(rendered).not.toContain("done");
+	});
+
+	test("limits unknown tool running output to the latest five visual lines", () => {
+		const component = new ToolExecutionComponent(
+			"missing_tool",
+			"tool-missing-preview",
+			{ command: "run" },
+			{},
+			undefined,
+			createFakeTui(),
+			process.cwd(),
+		);
+		component.markExecutionStarted();
+		component.updateResult(
+			{
+				content: [{ type: "text", text: "line-1\nline-2\nline-3\nline-4\nline-5\nline-6\nline-7" }],
+				isError: false,
+			},
+			true,
+		);
+
+		const rendered = stripAnsi(component.render(120).join("\n"));
+		expect(rendered).toContain("missing_tool");
+		expect(rendered).toContain("run");
+		expect(rendered).not.toContain("line-1");
+		expect(rendered).not.toContain("line-2");
+		expect(rendered).toContain("line-3");
+		expect(rendered).toContain("line-7");
 	});
 
 	test("trims trailing blank display lines from write previews", () => {
@@ -380,7 +485,7 @@ describe("ToolExecutionComponent parity", () => {
 		expect(rendered).not.toContain("two\n\n");
 	});
 
-	test("trims trailing blank display lines from read results", () => {
+	test("hides completed read output even when expanded", () => {
 		const component = new ToolExecutionComponent(
 			"read",
 			"tool-8",
@@ -396,12 +501,13 @@ describe("ToolExecutionComponent parity", () => {
 		);
 		component.setExpanded(true);
 		const rendered = stripAnsi(component.render(120).join("\n"));
-		expect(rendered).toContain("one");
-		expect(rendered).toContain("two");
-		expect(rendered).not.toContain("two\n\n");
+		expect(rendered).toContain("read");
+		expect(rendered).toContain("notes.txt");
+		expect(rendered).not.toContain("one");
+		expect(rendered).not.toContain("two");
 	});
 
-	test("does not syntax-highlight read errors based on the requested file path", () => {
+	test("hides completed error output and shows a red status point", () => {
 		const component = new ToolExecutionComponent(
 			"read",
 			"tool-read-error-highlighting",
@@ -415,11 +521,12 @@ describe("ToolExecutionComponent parity", () => {
 		component.updateResult({ content: [{ type: "text", text: error }], details: undefined, isError: true }, false);
 
 		const rendered = component.render(120).join("\n");
-		expect(stripAnsi(rendered)).toContain(error);
-		expect(rendered).toContain(theme.fg("toolOutput", error));
+		expect(stripAnsi(rendered)).not.toContain(error);
+		expect(stripAnsi(rendered)).toContain("config.exs");
+		expect(rendered).toContain(theme.fg("error", "●"));
 	});
 
-	test("collapses ordinary read results until expanded", () => {
+	test("keeps completed read results hidden when expanded", () => {
 		const component = new ToolExecutionComponent(
 			"read",
 			"tool-ordinary-read-collapsed",
@@ -441,7 +548,7 @@ describe("ToolExecutionComponent parity", () => {
 
 		component.setExpanded(true);
 		const expanded = stripAnsi(component.render(120).join("\n"));
-		expect(expanded).toContain("hidden content");
+		expect(expanded).not.toContain("hidden content");
 	});
 
 	for (const scenario of [
@@ -478,7 +585,7 @@ describe("ToolExecutionComponent parity", () => {
 			absent: undefined,
 		},
 	] as const) {
-		test(`renders ${scenario.title} read results compactly until expanded`, () => {
+		test(`keeps completed ${scenario.title} read results hidden`, () => {
 			const component = new ToolExecutionComponent(
 				"read",
 				`tool-compact-${scenario.title}`,
@@ -502,7 +609,7 @@ describe("ToolExecutionComponent parity", () => {
 
 			component.setExpanded(true);
 			const expanded = stripAnsi(component.render(120).join("\n"));
-			expect(expanded).toContain(scenario.hidden);
+			expect(expanded).not.toContain(scenario.hidden);
 		});
 	}
 

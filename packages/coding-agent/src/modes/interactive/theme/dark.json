@@ -43,6 +43,7 @@
 		"toolErrorBg": "toolErrorBg",
 		"toolTitle": "text",
 		"toolOutput": "gray",
+		"toolRunning": "#f59e0b",
 
 		"mdHeading": "#f0c674",
 		"mdLink": "#81a2be",

@@ -76,7 +76,7 @@ describe("edit tool TUI rendering", () => {
 		await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 	});
 
-	it("renders the large diff in the call preview and does not full-redraw when the result settles", async () => {
+	it("renders the large preflight diff and compacts the call without a full redraw when it settles", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "pi-edit-redraw-"));
 		tempDirs.push(dir);
 		const filePath = join(dir, "large-edit.txt");
@@ -144,12 +144,14 @@ describe("edit tool TUI rendering", () => {
 		expect(terminal.fullClearCount).toBe(clearsBeforeResult);
 
 		const settledRender = component.render(80).join("\n");
-		expect(settledRender).toContain("line 50 changed");
-		expect(settledRender).toContain("line 950 changed");
+		expect(settledRender).toContain("edit");
+		expect(settledRender).toContain("large-edit.txt");
+		expect(settledRender).not.toContain("line 50 changed");
+		expect(settledRender).not.toContain("line 950 changed");
 		expect(settledRender).not.toContain("Successfully replaced");
 	});
 
-	it("reconstructs the boxed preview from a settled result without argsComplete", async () => {
+	it("reconstructs the compact call from a settled result without argsComplete", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "pi-edit-replay-"));
 		tempDirs.push(dir);
 		const filePath = join(dir, "replay-edit.txt");
@@ -194,8 +196,10 @@ describe("edit tool TUI rendering", () => {
 		await waitForRender();
 
 		const rendered = component.render(80).join("\n");
-		expect(rendered).toContain("line 50 changed");
-		expect(rendered).toContain("line 150 changed");
+		expect(rendered).toContain("edit");
+		expect(rendered).toContain("replay-edit.txt");
+		expect(rendered).not.toContain("line 50 changed");
+		expect(rendered).not.toContain("line 150 changed");
 	});
 
 	it("shows a preflight error without rendering a diff when the edits do not apply", async () => {

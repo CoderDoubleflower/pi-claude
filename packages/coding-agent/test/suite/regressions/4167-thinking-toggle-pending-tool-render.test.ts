@@ -162,7 +162,10 @@ describe("InteractiveMode.renderSessionEntries", () => {
 		});
 
 		expect(fakeThis.pendingTools.has(TOOL_CALL_ID)).toBe(false);
-		expect(renderChat(fakeThis.chatContainer)).toContain("FINAL_RESULT");
+		const rendered = renderChat(fakeThis.chatContainer);
+		expect(rendered).toContain(TOOL_NAME);
+		expect(rendered).toContain("delayMs");
+		expect(rendered).not.toContain("FINAL_RESULT");
 	});
 
 	test("does not keep completed historical tool calls registered as pending", () => {
@@ -177,6 +180,9 @@ describe("InteractiveMode.renderSessionEntries", () => {
 		);
 
 		expect(fakeThis.pendingTools.size).toBe(0);
-		expect(renderChat(fakeThis.chatContainer)).toContain("HISTORICAL_RESULT");
+		const rendered = renderChat(fakeThis.chatContainer);
+		expect(rendered).toContain(TOOL_NAME);
+		expect(rendered).toContain("delayMs");
+		expect(rendered).not.toContain("HISTORICAL_RESULT");
 	});
 });

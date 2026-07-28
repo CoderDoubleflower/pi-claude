@@ -2,8 +2,58 @@ import { Box, type Component, Container, getCapabilities, Image, Spacer, Text, t
 import type { ToolDefinition, ToolRenderContext } from "../../../core/extensions/types.ts";
 import { createAllToolDefinitions, type ToolName } from "../../../core/tools/index.ts";
 import { getTextOutput as getRenderedTextOutput } from "../../../core/tools/render-utils.ts";
+import { stripAnsi } from "../../../utils/ansi.ts";
 import { convertToPng } from "../../../utils/image-convert.ts";
 import { theme } from "../theme/theme.ts";
+
+const TOOL_OUTPUT_PREVIEW_LINES = 5;
+
+function isTerminalImageSequence(line: string): boolean {
+	return line.includes("\x1b_G") || line.includes("\x1b]1337;File=");
+}
+
+class CallSummaryComponent implements Component {
+	private component: Component;
+
+	constructor(component: Component) {
+		this.component = component;
+	}
+
+	render(width: number): string[] {
+		const lines = this.component.render(width);
+		const start = lines.findIndex((line) => stripAnsi(line).trim().length > 0);
+		if (start === -1) return [];
+
+		let end = start;
+		while (end < lines.length && stripAnsi(lines[end] ?? "").trim().length > 0) end++;
+		return lines.slice(start, end);
+	}
+
+	invalidate(): void {
+		this.component.invalidate?.();
+	}
+}
+
+class LatestLinesComponent implements Component {
+	private component: Component;
+
+	constructor(component: Component) {
+		this.component = component;
+	}
+
+	render(width: number): string[] {
+		const lines = this.component.render(width);
+		let start = 0;
+		let end = lines.length;
+		while (start < end && stripAnsi(lines[start] ?? "").trim().length === 0) start++;
+		while (end > start && stripAnsi(lines[end - 1] ?? "").trim().length === 0) end--;
+		return lines.slice(start, end).slice(-TOOL_OUTPUT_PREVIEW_LINES);
+	}
+
+	invalidate(): void {
+		this.component.invalidate?.();
+	}
+}
 
 export interface ToolExecutionOptions {
 	showImages?: boolean;
@@ -12,7 +62,6 @@ export interface ToolExecutionOptions {
 
 export class ToolExecutionComponent extends Container {
 	private contentBox: Box;
-	private contentText: Text;
 	private selfRenderContainer: Container;
 	private callRendererComponent?: Component;
 	private resultRendererComponent?: Component;
@@ -37,8 +86,7 @@ export class ToolExecutionComponent extends Container {
 		isError: boolean;
 		details?: any;
 	};
-	private convertedImages: Map<number, { data: string; mimeType: string }> = new Map();
-	private hideComponent = false;
+	private convertedImages = new Map<number, { data: string; mimeType: string }>();
 
 	constructor(
 		toolName: string,
@@ -62,18 +110,13 @@ export class ToolExecutionComponent extends Container {
 
 		this.addChild(new Spacer(1));
 
-		// Always create all shell variants. contentBox is used for default renderer-based composition.
+		// Always create both shell variants. contentBox is used for default and fallback composition.
 		// selfRenderContainer is used when the tool renders its own framing.
-		// contentText is reserved for generic fallback rendering when no tool definition exists.
 		this.contentBox = new Box(1, 1, (text: string) => theme.bg("toolPendingBg", text));
-		this.contentText = new Text("", 1, 1, (text: string) => theme.bg("toolPendingBg", text));
 		this.selfRenderContainer = new Container();
-
-		if (this.hasRendererDefinition()) {
-			this.addChild(this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox);
-		} else {
-			this.addChild(this.contentText);
-		}
+		this.addChild(
+			this.hasRendererDefinition() && this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox,
+		);
 
 		this.updateDisplay();
 	}
@@ -133,7 +176,17 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private createCallFallback(): Component {
-		return new Text(theme.fg("toolTitle", theme.bold(this.toolName)), 0, 0);
+		let text = theme.fg("toolTitle", theme.bold(this.toolName));
+		const args = JSON.stringify(this.args);
+		if (args && args !== "{}") {
+			text += ` ${theme.fg("toolOutput", args)}`;
+		}
+		return new Text(text, 0, 0);
+	}
+
+	private getDisplayedCallComponent(component: Component): Component {
+		if ((this.isPartial && !this.executionStarted) || this.toolName === "bash") return component;
+		return new CallSummaryComponent(component);
 	}
 
 	private createResultFallback(): Component | undefined {
@@ -176,24 +229,21 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private maybeConvertImagesForKitty(): void {
-		const caps = getCapabilities();
-		if (caps.images !== "kitty") return;
-		if (!this.result) return;
+		if (!this.isPartial || !this.expanded || !this.showImages || !this.result) return;
+		if (getCapabilities().images !== "kitty") return;
 
-		const imageBlocks = this.result.content.filter((c) => c.type === "image");
+		const imageBlocks = this.result.content.filter((content) => content.type === "image");
 		for (let i = 0; i < imageBlocks.length; i++) {
-			const img = imageBlocks[i];
-			if (!img.data || !img.mimeType) continue;
-			if (img.mimeType === "image/png") continue;
-			if (this.convertedImages.has(i)) continue;
+			const image = imageBlocks[i];
+			if (!image.data || !image.mimeType || image.mimeType === "image/png" || this.convertedImages.has(i)) {
+				continue;
+			}
 
-			const index = i;
-			convertToPng(img.data, img.mimeType).then((converted) => {
-				if (converted) {
-					this.convertedImages.set(index, converted);
-					this.updateDisplay();
-					this.ui.requestRender();
-				}
+			void convertToPng(image.data, image.mimeType).then((converted) => {
+				if (!converted) return;
+				this.convertedImages.set(i, converted);
+				this.updateDisplay();
+				this.ui.requestRender();
 			});
 		}
 	}
@@ -201,11 +251,13 @@ export class ToolExecutionComponent extends Container {
 	setExpanded(expanded: boolean): void {
 		this.expanded = expanded;
 		this.updateDisplay();
+		this.maybeConvertImagesForKitty();
 	}
 
 	setShowImages(show: boolean): void {
 		this.showImages = show;
 		this.updateDisplay();
+		this.maybeConvertImagesForKitty();
 	}
 
 	setImageWidthCells(width: number): void {
@@ -219,35 +271,23 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	override render(width: number): string[] {
-		if (this.hideComponent) {
-			return [];
+		const contentWidth = Math.max(1, width - 2);
+		const lines = super.render(contentWidth);
+		const firstContentLine = lines.findIndex((line) => stripAnsi(line).trim().length > 0);
+		const status = this.isPartial
+			? theme.fg("toolRunning", "●")
+			: this.result?.isError
+				? theme.fg("error", "●")
+				: theme.fg("success", "●");
+
+		if (firstContentLine === -1 || isTerminalImageSequence(lines[firstContentLine] ?? "")) {
+			return ["", `${status} ${theme.fg("toolTitle", theme.bold(this.toolName))}`, ...lines];
 		}
 
-		if (this.hasRendererDefinition() && this.getRenderShell() === "self") {
-			const contentLines = this.selfRenderContainer.render(width);
-			if (contentLines.length === 0 && this.imageComponents.length === 0) {
-				return [];
-			}
-
-			const lines: string[] = [];
-			if (contentLines.length > 0) {
-				lines.push("");
-				lines.push(...contentLines);
-			}
-			for (let i = 0; i < this.imageComponents.length; i++) {
-				const spacer = this.imageSpacers[i];
-				if (spacer) {
-					lines.push(...spacer.render(width));
-				}
-				const imageComponent = this.imageComponents[i];
-				if (imageComponent) {
-					lines.push(...imageComponent.render(width));
-				}
-			}
-			return lines;
-		}
-
-		return super.render(width);
+		return lines.map((line, index) => {
+			if (index === firstContentLine) return `${status} ${line}`;
+			return line === "" || isTerminalImageSequence(line) ? line : `  ${line}`;
+		});
 	}
 
 	private updateDisplay(): void {
@@ -257,8 +297,6 @@ export class ToolExecutionComponent extends Container {
 				? (text: string) => theme.bg("toolErrorBg", text)
 				: (text: string) => theme.bg("toolSuccessBg", text);
 
-		let hasContent = false;
-		this.hideComponent = false;
 		if (this.hasRendererDefinition()) {
 			const renderContainer = this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox;
 			if (renderContainer instanceof Box) {
@@ -268,29 +306,23 @@ export class ToolExecutionComponent extends Container {
 
 			const callRenderer = this.getCallRenderer();
 			if (!callRenderer) {
-				renderContainer.addChild(this.createCallFallback());
-				hasContent = true;
+				renderContainer.addChild(this.getDisplayedCallComponent(this.createCallFallback()));
 			} else {
 				try {
 					const component = callRenderer(this.args, theme, this.getRenderContext(this.callRendererComponent));
 					this.callRendererComponent = component;
-					renderContainer.addChild(component);
-					hasContent = true;
+					renderContainer.addChild(this.getDisplayedCallComponent(component));
 				} catch {
 					this.callRendererComponent = undefined;
-					renderContainer.addChild(this.createCallFallback());
-					hasContent = true;
+					renderContainer.addChild(this.getDisplayedCallComponent(this.createCallFallback()));
 				}
 			}
 
 			if (this.result) {
 				const resultRenderer = this.getResultRenderer();
+				let renderedResult: Component | undefined;
 				if (!resultRenderer) {
-					const component = this.createResultFallback();
-					if (component) {
-						renderContainer.addChild(component);
-						hasContent = true;
-					}
+					renderedResult = this.createResultFallback();
 				} else {
 					try {
 						const component = resultRenderer(
@@ -300,77 +332,91 @@ export class ToolExecutionComponent extends Container {
 							this.getRenderContext(this.resultRendererComponent),
 						);
 						this.resultRendererComponent = component;
-						renderContainer.addChild(component);
-						hasContent = true;
+						renderedResult = component;
 					} catch {
 						this.resultRendererComponent = undefined;
-						const component = this.createResultFallback();
-						if (component) {
-							renderContainer.addChild(component);
-							hasContent = true;
-						}
+						renderedResult = this.createResultFallback();
+					}
+				}
+
+				if (this.isPartial) {
+					const textResult = this.createOutputTextComponent();
+					if (this.expanded) {
+						const expandedResult = renderedResult ?? textResult;
+						if (expandedResult) renderContainer.addChild(expandedResult);
+					} else {
+						const previewSource = textResult ?? renderedResult;
+						if (previewSource) renderContainer.addChild(new LatestLinesComponent(previewSource));
 					}
 				}
 			}
 		} else {
-			this.contentText.setCustomBgFn(bgFn);
-			this.contentText.setText(this.formatToolExecution());
-			hasContent = true;
-		}
-
-		for (const img of this.imageComponents) {
-			this.removeChild(img);
-		}
-		this.imageComponents = [];
-		for (const spacer of this.imageSpacers) {
-			this.removeChild(spacer);
-		}
-		this.imageSpacers = [];
-
-		if (this.result) {
-			const imageBlocks = this.result.content.filter((c) => c.type === "image");
-			const caps = getCapabilities();
-			for (let i = 0; i < imageBlocks.length; i++) {
-				const img = imageBlocks[i];
-				if (caps.images && this.showImages && img.data && img.mimeType) {
-					const converted = this.convertedImages.get(i);
-					const imageData = converted?.data ?? img.data;
-					const imageMimeType = converted?.mimeType ?? img.mimeType;
-					if (caps.images === "kitty" && imageMimeType !== "image/png") continue;
-
-					const spacer = new Spacer(1);
-					this.addChild(spacer);
-					this.imageSpacers.push(spacer);
-					const imageComponent = new Image(
-						imageData,
-						imageMimeType,
-						{ fallbackColor: (s: string) => theme.fg("toolOutput", s) },
-						{ maxWidthCells: this.imageWidthCells },
-					);
-					this.imageComponents.push(imageComponent);
-					this.addChild(imageComponent);
+			this.contentBox.setBgFn(bgFn);
+			this.contentBox.clear();
+			this.contentBox.addChild(new Text(this.formatFallbackCall(), 0, 0));
+			if (this.isPartial) {
+				const outputComponent = this.createOutputTextComponent();
+				if (outputComponent) {
+					this.contentBox.addChild(this.expanded ? outputComponent : new LatestLinesComponent(outputComponent));
 				}
 			}
 		}
 
-		if (this.hasRendererDefinition() && !hasContent && this.imageComponents.length === 0) {
-			this.hideComponent = true;
+		for (const image of this.imageComponents) this.removeChild(image);
+		for (const spacer of this.imageSpacers) this.removeChild(spacer);
+		this.imageComponents = [];
+		this.imageSpacers = [];
+
+		if (this.isPartial && this.expanded && this.result) {
+			const capabilities = getCapabilities();
+			const imageBlocks = this.result.content.filter((content) => content.type === "image");
+			for (let i = 0; i < imageBlocks.length; i++) {
+				const image = imageBlocks[i];
+				if (!capabilities.images || !this.showImages || !image.data || !image.mimeType) continue;
+
+				const converted = this.convertedImages.get(i);
+				const imageData = converted?.data ?? image.data;
+				const imageMimeType = converted?.mimeType ?? image.mimeType;
+				if (capabilities.images === "kitty" && imageMimeType !== "image/png") continue;
+
+				const spacer = new Spacer(1);
+				const imageComponent = new Image(
+					imageData,
+					imageMimeType,
+					{ fallbackColor: (text: string) => theme.fg("toolOutput", text) },
+					{ maxWidthCells: this.imageWidthCells },
+				);
+				this.imageSpacers.push(spacer);
+				this.imageComponents.push(imageComponent);
+				this.addChild(spacer);
+				this.addChild(imageComponent);
+			}
 		}
+	}
+
+	private createOutputTextComponent(): Text | undefined {
+		const output = getRenderedTextOutput(this.result, false).trimEnd();
+		if (!output) return undefined;
+		return new Text(
+			output
+				.split("\n")
+				.map((line) => theme.fg("toolOutput", line))
+				.join("\n"),
+			0,
+			0,
+		);
 	}
 
 	private getTextOutput(): string {
-		return getRenderedTextOutput(this.result, this.showImages);
+		return getRenderedTextOutput(this.result, this.isPartial && this.expanded && this.showImages);
 	}
 
-	private formatToolExecution(): string {
+	private formatFallbackCall(): string {
 		let text = theme.fg("toolTitle", theme.bold(this.toolName));
-		const content = JSON.stringify(this.args, null, 2);
-		if (content) {
-			text += `\n\n${content}`;
-		}
-		const output = this.getTextOutput();
-		if (output) {
-			text += `\n${output}`;
+		const compact = !this.isPartial || this.executionStarted;
+		const args = JSON.stringify(this.args, null, compact ? undefined : 2);
+		if (args && args !== "{}") {
+			text += compact ? ` ${theme.fg("toolOutput", args)}` : `\n\n${theme.fg("toolOutput", args)}`;
 		}
 		return text;
 	}

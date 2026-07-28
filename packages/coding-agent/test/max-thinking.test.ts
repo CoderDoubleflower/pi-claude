@@ -25,7 +25,7 @@ describe("max thinking level", () => {
 		expect(settings.getDefaultThinkingLevel()).toBe("max");
 	});
 
-	it("falls back to thinkingXhigh for legacy themes", () => {
+	it("applies legacy theme color fallbacks", () => {
 		const testDir = mkdtempSync(join(tmpdir(), "pi-max-theme-"));
 		tempDirs.push(testDir);
 		const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -34,6 +34,7 @@ describe("max thinking level", () => {
 		) as { name: string; colors: Record<string, unknown> };
 		darkTheme.name = "legacy-theme";
 		delete darkTheme.colors.thinkingMax;
+		delete darkTheme.colors.toolRunning;
 		const themePath = join(testDir, "legacy-theme.json");
 		writeFileSync(themePath, JSON.stringify(darkTheme));
 
@@ -41,5 +42,6 @@ describe("max thinking level", () => {
 		expect(legacyTheme.getThinkingBorderColor("max")("border")).toBe(
 			legacyTheme.getThinkingBorderColor("xhigh")("border"),
 		);
+		expect(legacyTheme.fg("toolRunning", "●")).toBe(legacyTheme.fg("warning", "●"));
 	});
 });
