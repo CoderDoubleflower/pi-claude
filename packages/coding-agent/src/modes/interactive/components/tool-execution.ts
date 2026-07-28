@@ -112,7 +112,7 @@ export class ToolExecutionComponent extends Container {
 
 		// Always create both shell variants. contentBox is used for default and fallback composition.
 		// selfRenderContainer is used when the tool renders its own framing.
-		this.contentBox = new Box(1, 1, (text: string) => theme.bg("toolPendingBg", text));
+		this.contentBox = new Box(1, 0);
 		this.selfRenderContainer = new Container();
 		this.addChild(
 			this.hasRendererDefinition() && this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox,
@@ -277,8 +277,8 @@ export class ToolExecutionComponent extends Container {
 		const status = this.isPartial
 			? theme.fg("toolRunning", "●")
 			: this.result?.isError
-				? theme.fg("error", "●")
-				: theme.fg("success", "●");
+				? theme.fg("toolError", "●")
+				: theme.fg("toolSuccess", "●");
 
 		if (firstContentLine === -1 || isTerminalImageSequence(lines[firstContentLine] ?? "")) {
 			return ["", `${status} ${theme.fg("toolTitle", theme.bold(this.toolName))}`, ...lines];
@@ -291,17 +291,8 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	private updateDisplay(): void {
-		const bgFn = this.isPartial
-			? (text: string) => theme.bg("toolPendingBg", text)
-			: this.result?.isError
-				? (text: string) => theme.bg("toolErrorBg", text)
-				: (text: string) => theme.bg("toolSuccessBg", text);
-
 		if (this.hasRendererDefinition()) {
 			const renderContainer = this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox;
-			if (renderContainer instanceof Box) {
-				renderContainer.setBgFn(bgFn);
-			}
 			renderContainer.clear();
 
 			const callRenderer = this.getCallRenderer();
@@ -351,7 +342,6 @@ export class ToolExecutionComponent extends Container {
 				}
 			}
 		} else {
-			this.contentBox.setBgFn(bgFn);
 			this.contentBox.clear();
 			this.contentBox.addChild(new Text(this.formatFallbackCall(), 0, 0));
 			if (this.isPartial) {

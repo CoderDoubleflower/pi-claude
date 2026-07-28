@@ -34,7 +34,7 @@
 		},
 		"colors": {
 			"type": "object",
-			"description": "Theme color definitions (thinkingMax and toolRunning are optional and use compatible fallbacks)",
+			"description": "Theme color definitions (assistantMarker, thinkingMax, toolRunning, toolSuccess, and toolError are optional and use compatible fallbacks)",
 			"required": [
 				"accent",
 				"border",
@@ -133,6 +133,10 @@
 					"$ref": "#/$defs/colorValue",
 					"description": "Thinking block text color"
 				},
+				"assistantMarker": {
+					"$ref": "#/$defs/colorValue",
+					"description": "Assistant response marker color (defaults to text)"
+				},
 				"selectedBg": {
 					"$ref": "#/$defs/colorValue",
 					"description": "Selected item background"
@@ -180,6 +184,14 @@
 				"toolRunning": {
 					"$ref": "#/$defs/colorValue",
 					"description": "Tool execution running status indicator (falls back to warning when omitted)"
+				},
+				"toolSuccess": {
+					"$ref": "#/$defs/colorValue",
+					"description": "Tool execution success status indicator (falls back to success when omitted)"
+				},
+				"toolError": {
+					"$ref": "#/$defs/colorValue",
+					"description": "Tool execution error status indicator (falls back to error when omitted)"
 				},
 				"mdHeading": {
 					"$ref": "#/$defs/colorValue",

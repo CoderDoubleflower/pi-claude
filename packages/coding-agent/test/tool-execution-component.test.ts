@@ -51,9 +51,14 @@ describe("ToolExecutionComponent parity", () => {
 			createFakeTui(),
 			process.cwd(),
 		);
+		const runningLines = component.render(120).map((line) => stripAnsi(line));
 		const running = component.render(120).join("\n");
+		const statusLine = runningLines.find((line) => line.includes("●"));
 		expect(stripAnsi(running)).toContain("custom call");
 		expect(running).toContain(theme.fg("toolRunning", "●"));
+		expect(running).not.toContain(theme.getBgAnsi("toolPendingBg"));
+		expect(statusLine?.indexOf("●")).toBe(0);
+		expect(runningLines.filter((line) => line.trim() === "")).toHaveLength(1);
 
 		component.updateResult(
 			{
@@ -69,7 +74,8 @@ describe("ToolExecutionComponent parity", () => {
 		expect(rendered).toContain("custom call");
 		expect(rendered).not.toContain("custom result");
 		expect(rendered).not.toContain("done");
-		expect(completed).toContain(theme.fg("success", "●"));
+		expect(completed).toContain(theme.fg("toolSuccess", "●"));
+		expect(completed).not.toContain(theme.getBgAnsi("toolSuccessBg"));
 	});
 
 	test("self-rendered empty tool rows fall back to a status summary", () => {
@@ -104,7 +110,7 @@ describe("ToolExecutionComponent parity", () => {
 
 		const completed = component.render(120).join("\n");
 		expect(stripAnsi(completed)).toContain("custom_tool");
-		expect(completed).toContain(theme.fg("success", "●"));
+		expect(completed).toContain(theme.fg("toolSuccess", "●"));
 	});
 
 	test("shows a compact call and only the latest five visual output lines while running", () => {
@@ -523,7 +529,8 @@ describe("ToolExecutionComponent parity", () => {
 		const rendered = component.render(120).join("\n");
 		expect(stripAnsi(rendered)).not.toContain(error);
 		expect(stripAnsi(rendered)).toContain("config.exs");
-		expect(rendered).toContain(theme.fg("error", "●"));
+		expect(rendered).toContain(theme.fg("toolError", "●"));
+		expect(rendered).not.toContain(theme.getBgAnsi("toolErrorBg"));
 	});
 
 	test("keeps completed read results hidden when expanded", () => {

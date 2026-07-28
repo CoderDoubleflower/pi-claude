@@ -81,7 +81,9 @@ vim ~/.pi/agent/themes/my-theme.json
     "toolErrorBg": "#2e1e1e",
     "toolTitle": "primary",
     "toolOutput": "",
-    "toolRunning": "#f59e0b",
+    "toolRunning": "#ff9f0a",
+    "toolSuccess": "#00ff66",
+    "toolError": "#ff3b30",
     "mdHeading": "#ffaa00",
     "mdLink": "primary",
     "mdLinkUrl": "secondary",
@@ -141,15 +143,15 @@ vim ~/.pi/agent/themes/my-theme.json
 
 - `name` is required, must be unique, and must not contain `/`.
 - `vars` is optional. Define reusable colors here, then reference them in `colors`.
-- `colors` must define all 51 required tokens. `thinkingMax` and `toolRunning` are optional; they fall back to `thinkingXhigh` and `warning`, respectively.
+- `colors` must define all 51 required tokens. `assistantMarker`, `thinkingMax`, `toolRunning`, `toolSuccess`, and `toolError` are optional; they fall back to `text`, `thinkingXhigh`, `warning`, `success`, and `error`, respectively.
 
 The `$schema` field enables editor auto-completion and validation.
 
 ## Color Tokens
 
-Every theme must define all 51 required color tokens. `thinkingMax` and `toolRunning` are optional for compatibility with existing themes; when omitted, they use `thinkingXhigh` and `warning`, respectively.
+Every theme must define all 51 required color tokens. `assistantMarker`, `thinkingMax`, `toolRunning`, `toolSuccess`, and `toolError` are optional for compatibility with existing themes; when omitted, they use `text`, `thinkingXhigh`, `warning`, `success`, and `error`, respectively.
 
-### Core UI (11 colors)
+### Core UI (11 required, 1 optional)
 
 | Token | Purpose |
 |-------|---------|
@@ -164,8 +166,9 @@ Every theme must define all 51 required color tokens. `thinkingMax` and `toolRun
 | `dim` | Tertiary text |
 | `text` | Default text (usually `""`) |
 | `thinkingText` | Thinking block text |
+| `assistantMarker` | Assistant response marker; optional, falls back to `text` |
 
-### Backgrounds & Content (11 required, 1 optional)
+### Backgrounds & Content (11 required, 3 optional)
 
 | Token | Purpose |
 |-------|---------|
@@ -181,6 +184,8 @@ Every theme must define all 51 required color tokens. `thinkingMax` and `toolRun
 | `toolTitle` | Tool title |
 | `toolOutput` | Tool output text |
 | `toolRunning` | Running status indicator; optional, falls back to `warning` |
+| `toolSuccess` | Success status indicator; optional, falls back to `success` |
+| `toolError` | Error status indicator; optional, falls back to `error` |
 
 ### Markdown (10 colors)
 

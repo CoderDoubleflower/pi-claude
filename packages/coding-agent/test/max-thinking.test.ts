@@ -35,6 +35,8 @@ describe("max thinking level", () => {
 		darkTheme.name = "legacy-theme";
 		delete darkTheme.colors.thinkingMax;
 		delete darkTheme.colors.toolRunning;
+		delete darkTheme.colors.toolSuccess;
+		delete darkTheme.colors.toolError;
 		const themePath = join(testDir, "legacy-theme.json");
 		writeFileSync(themePath, JSON.stringify(darkTheme));
 
@@ -43,5 +45,7 @@ describe("max thinking level", () => {
 			legacyTheme.getThinkingBorderColor("xhigh")("border"),
 		);
 		expect(legacyTheme.fg("toolRunning", "●")).toBe(legacyTheme.fg("warning", "●"));
+		expect(legacyTheme.fg("toolSuccess", "●")).toBe(legacyTheme.fg("success", "●"));
+		expect(legacyTheme.fg("toolError", "●")).toBe(legacyTheme.fg("error", "●"));
 	});
 });

@@ -31,6 +31,7 @@
 		"dim": "dimGray",
 		"text": "text",
 		"thinkingText": "gray",
+		"assistantMarker": "#ffffff",
 
 		"selectedBg": "selectedBg",
 		"userMessageBg": "userMsgBg",
@@ -43,7 +44,9 @@
 		"toolErrorBg": "toolErrorBg",
 		"toolTitle": "text",
 		"toolOutput": "gray",
-		"toolRunning": "#f59e0b",
+		"toolRunning": "#ff9f0a",
+		"toolSuccess": "#00ff66",
+		"toolError": "#ff3b30",
 
 		"mdHeading": "#f0c674",
 		"mdLink": "#81a2be",

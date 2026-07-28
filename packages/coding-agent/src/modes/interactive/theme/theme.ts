@@ -33,7 +33,7 @@ const ThemeJsonSchema = Type.Object({
 	name: Type.String(),
 	vars: Type.Optional(Type.Record(Type.String(), ColorValueSchema)),
 	colors: Type.Object({
-		// Core UI (11 colors)
+		// Core UI (11 required, 1 optional)
 		accent: ColorValueSchema,
 		border: ColorValueSchema,
 		borderAccent: ColorValueSchema,
@@ -45,7 +45,8 @@ const ThemeJsonSchema = Type.Object({
 		dim: ColorValueSchema,
 		text: ColorValueSchema,
 		thinkingText: ColorValueSchema,
-		// Backgrounds & Content Text (11 required, 1 optional)
+		assistantMarker: Type.Optional(ColorValueSchema),
+		// Backgrounds & Content Text (11 required, 3 optional)
 		selectedBg: ColorValueSchema,
 		userMessageBg: ColorValueSchema,
 		userMessageText: ColorValueSchema,
@@ -58,6 +59,8 @@ const ThemeJsonSchema = Type.Object({
 		toolTitle: ColorValueSchema,
 		toolOutput: ColorValueSchema,
 		toolRunning: Type.Optional(ColorValueSchema),
+		toolSuccess: Type.Optional(ColorValueSchema),
+		toolError: Type.Optional(ColorValueSchema),
 		// Markdown (10 colors)
 		mdHeading: ColorValueSchema,
 		mdLink: ColorValueSchema,
@@ -119,12 +122,15 @@ export type ThemeColor =
 	| "dim"
 	| "text"
 	| "thinkingText"
+	| "assistantMarker"
 	| "userMessageText"
 	| "customMessageText"
 	| "customMessageLabel"
 	| "toolTitle"
 	| "toolOutput"
 	| "toolRunning"
+	| "toolSuccess"
+	| "toolError"
 	| "mdHeading"
 	| "mdLink"
 	| "mdLinkUrl"
@@ -321,13 +327,20 @@ function resolveThemeColors<T extends Record<string, ColorValue>>(
 	return resolved as Record<keyof T, string | number>;
 }
 
-function withThemeColorFallbacks(
-	colors: ThemeJson["colors"],
-): ThemeJson["colors"] & { thinkingMax: ColorValue; toolRunning: ColorValue } {
+function withThemeColorFallbacks(colors: ThemeJson["colors"]): ThemeJson["colors"] & {
+	assistantMarker: ColorValue;
+	thinkingMax: ColorValue;
+	toolRunning: ColorValue;
+	toolSuccess: ColorValue;
+	toolError: ColorValue;
+} {
 	return {
 		...colors,
+		assistantMarker: colors.assistantMarker ?? colors.text,
 		thinkingMax: colors.thinkingMax ?? colors.thinkingXhigh,
 		toolRunning: colors.toolRunning ?? colors.warning,
+		toolSuccess: colors.toolSuccess ?? colors.success,
+		toolError: colors.toolError ?? colors.error,
 	};
 }
 
@@ -335,8 +348,9 @@ function withThemeColorFallbacks(
 // Theme Class
 // ============================================================================
 
-type ThemeForegroundColors = Record<Exclude<ThemeColor, "toolRunning">, string | number> &
-	Partial<Record<"toolRunning", string | number>>;
+type OptionalThemeForegroundColor = "assistantMarker" | "toolRunning" | "toolSuccess" | "toolError";
+type ThemeForegroundColors = Record<Exclude<ThemeColor, OptionalThemeForegroundColor>, string | number> &
+	Partial<Record<OptionalThemeForegroundColor, string | number>>;
 
 export class Theme {
 	readonly name?: string;
@@ -359,8 +373,11 @@ export class Theme {
 		this.fgColors = new Map();
 		const colors = {
 			...fgColors,
+			assistantMarker: fgColors.assistantMarker ?? fgColors.text,
 			thinkingMax: fgColors.thinkingMax ?? fgColors.thinkingXhigh,
 			toolRunning: fgColors.toolRunning ?? fgColors.warning,
+			toolSuccess: fgColors.toolSuccess ?? fgColors.success,
+			toolError: fgColors.toolError ?? fgColors.error,
 		};
 		for (const [key, value] of Object.entries(colors) as [ThemeColor, string | number][]) {
 			this.fgColors.set(key, fgAnsi(value, mode));

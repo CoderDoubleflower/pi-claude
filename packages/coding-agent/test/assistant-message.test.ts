@@ -2,7 +2,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { describe, expect, test } from "vitest";
 import { AssistantMessageComponent } from "../src/modes/interactive/components/assistant-message.ts";
 import { UserMessageComponent } from "../src/modes/interactive/components/user-message.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";
@@ -92,6 +92,27 @@ describe("AssistantMessageComponent", () => {
 		expect(rendered).toContain("answer");
 	});
 
+	test("prefixes the first formal response with the assistant marker", () => {
+		initTheme("dark");
+
+		const component = new AssistantMessageComponent(
+			createAssistantMessage([
+				{ type: "thinking", thinking: "private reasoning" },
+				{ type: "text", text: "first response" },
+				{ type: "text", text: "second response" },
+			]),
+			true,
+		);
+		const lines = component.render(80).map((line) => stripAnsi(line));
+		const responseLine = lines.find((line) => line.includes("●"));
+		const rendered = component.render(80).join("\n");
+
+		expect(rendered).toContain(theme.fg("assistantMarker", "●"));
+		expect(stripAnsi(rendered).match(/●/g)).toHaveLength(1);
+		expect(responseLine?.trimEnd()).toBe("●  first response");
+		expect(responseLine?.indexOf("●")).toBe(0);
+	});
+
 	test("uses configured output padding for text and thinking", () => {
 		initTheme("dark");
 
@@ -112,7 +133,7 @@ describe("AssistantMessageComponent", () => {
 
 		component.setOutputPad(0);
 		const updatedLines = component.render(80).map((line) => stripAnsi(line));
-		expect(updatedLines.some((line) => line.startsWith("hello"))).toBe(true);
+		expect(updatedLines.some((line) => line.startsWith("● hello"))).toBe(true);
 		expect(updatedLines.some((line) => line.startsWith("reasoning"))).toBe(true);
 	});
 

@@ -1,10 +1,33 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import { Container, Markdown, type MarkdownTheme, Spacer, Text } from "@earendil-works/pi-tui";
+import { type Component, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@earendil-works/pi-tui";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";
 const OSC133_ZONE_END = "\x1b]133;B\x07";
 const OSC133_ZONE_FINAL = "\x1b]133;C\x07";
+
+class AssistantResponseComponent implements Component {
+	private component: Component;
+	private outputPad: number;
+
+	constructor(component: Component, outputPad: number) {
+		this.component = component;
+		this.outputPad = outputPad;
+	}
+
+	render(width: number): string[] {
+		const leftPad = " ".repeat(this.outputPad);
+		const contentWidth = Math.max(1, width - this.outputPad - 2);
+		const lines = this.component.render(contentWidth);
+		return lines.map(
+			(line, index) => `${index === 0 ? `${theme.fg("assistantMarker", "●")} ` : "  "}${leftPad}${line}`,
+		);
+	}
+
+	invalidate(): void {
+		this.component.invalidate?.();
+	}
+}
 
 /**
  * Component that renders a complete assistant message
@@ -94,13 +117,24 @@ export class AssistantMessageComponent extends Container {
 			this.contentContainer.addChild(new Spacer(1));
 		}
 
+		let hasResponseMarker = false;
+
 		// Render content in order
 		for (let i = 0; i < message.content.length; i++) {
 			const content = message.content[i];
 			if (content.type === "text" && content.text.trim()) {
 				// Assistant text messages with no background - trim the text
 				// Set paddingY=0 to avoid extra spacing before tool executions
-				this.contentContainer.addChild(new Markdown(content.text.trim(), this.outputPad, 0, this.markdownTheme));
+				const markdown = new Markdown(
+					content.text.trim(),
+					hasResponseMarker ? this.outputPad : 0,
+					0,
+					this.markdownTheme,
+				);
+				this.contentContainer.addChild(
+					hasResponseMarker ? markdown : new AssistantResponseComponent(markdown, this.outputPad),
+				);
+				hasResponseMarker = true;
 			} else if (content.type === "thinking") {
 				const thinkingBlocks: string[] = [];
 				for (; i < message.content.length; i++) {
