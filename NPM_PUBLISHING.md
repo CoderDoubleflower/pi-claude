@@ -1,6 +1,6 @@
 # Automated npm publishing
 
-The repository publishes only `@doubleflower/pi-claude`; it does not publish the upstream `@earendil-works/*` workspaces.
+The repository publishes only `@doubleflower/pi-claude`; it does not publish the upstream `@earendil-works/*` workspaces. Do not use the root monorepo publish command for fork releases.
 
 ## First publication
 
