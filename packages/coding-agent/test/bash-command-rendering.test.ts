@@ -53,4 +53,27 @@ describe("Bash command rendering", () => {
 		expect(runningText).toContain("timeout 5s");
 		expect(runningText).not.toContain("echo par");
 	});
+
+	it("renders persisted arguments for completed and restored calls", () => {
+		const definition = createAllToolDefinitions(process.cwd()).bash;
+		const renderCall = definition.renderCall;
+		const context: any = {
+			args: { command: "echo restored" },
+			toolCallId: "bash-restored-render",
+			invalidate: () => {},
+			lastComponent: undefined,
+			state: {},
+			cwd: process.cwd(),
+			executionStarted: true,
+			argsComplete: true,
+			isPartial: false,
+			expanded: false,
+			showImages: false,
+			isError: false,
+		};
+
+		const component = renderCall?.({ command: "echo restored" }, theme, context);
+		const text = stripAnsi(component?.render(120).join("\n") ?? "");
+		expect(text).toContain("$ echo restored");
+	});
 });
