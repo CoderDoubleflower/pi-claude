@@ -21,6 +21,6 @@ export function recordToolExecutionArguments(toolCallId: string, args: unknown):
 }
 
 /** Return the canonical runtime arguments for a recently executed tool call. */
-export function getToolExecutionArguments(toolCallId: string): unknown {
-	return executionArguments.get(toolCallId);
+export function getToolExecutionArguments<T = unknown>(toolCallId: string): T | undefined {
+	return executionArguments.get(toolCallId) as T | undefined;
 }
