@@ -1,9 +1,9 @@
-name: Migrate npm scope to doubleflower
+name: Finalize doubleflower npm scope
 
 on:
   push:
     branches:
-      - chore/automated-npm-publishing
+      - main
 
 permissions:
   contents: write
@@ -15,12 +15,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: chore/automated-npm-publishing
+          ref: main
           fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22.19.0'
+          node-version: '24'
           cache: npm
 
       - name: Replace npm scope
@@ -28,20 +28,32 @@ jobs:
         run: |
           git grep -Il '@coderdoubleflower/pi-' | xargs -r sed -i 's/@coderdoubleflower\/pi-/@doubleflower\/pi-/g'
 
-      - name: Refresh generated lock metadata
+      - name: Allow independent fork versions in installer lock
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('scripts/generate-coding-agent-install-lock.mjs')
+          text = path.read_text()
+          text = text.replace(
+              'function validateGeneratedFiles(installerPackageJson, installLock, internalNames) {',
+              'function validateGeneratedFiles(installerPackageJson, installLock, internalNames, internalWorkspaces) {',
+          )
+          text = text.replace(
+              '''\t\tif (packageName && isInternalPackageName(packageName) && entry.version !== installerPackageJson.version) {\n\t\t\terrors.push(`${lockPath} internal package version ${entry.version} does not match ${installerPackageJson.version}`);\n\t\t}''',
+              '''\t\tif (packageName && isInternalPackageName(packageName)) {\n\t\t\tconst expectedVersion = internalWorkspaces.get(packageName)?.packageJson.version;\n\t\t\tif (expectedVersion && entry.version !== expectedVersion) {\n\t\t\t\terrors.push(`${lockPath} internal package version ${entry.version} does not match workspace version ${expectedVersion}`);\n\t\t\t}\n\t\t}''',
+          )
+          text = text.replace(
+              'validateGeneratedFiles(installerPackageJson, installLock, internalNames);',
+              'validateGeneratedFiles(installerPackageJson, installLock, internalNames, internalWorkspaces);',
+          )
+          path.write_text(text)
+
+      - name: Refresh generated metadata
         run: |
           npm install --package-lock-only --ignore-scripts
           node scripts/generate-coding-agent-shrinkwrap.mjs
           node scripts/generate-coding-agent-install-lock.mjs
-
-      - name: Commit migrated scope
-        shell: bash
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
-          git commit -m 'chore: use @doubleflower npm scope'
-          git push origin HEAD:chore/automated-npm-publishing
 
       - name: Validate migration
         run: |
@@ -50,3 +62,13 @@ jobs:
           npm run check:shrinkwrap
           npm run check:install-lock:coding-agent
           npm pack --dry-run --ignore-scripts --workspace=@doubleflower/pi-claude
+
+      - name: Remove one-off workflow and commit
+        shell: bash
+        run: |
+          rm .github/workflows/migrate-npm-scope-doubleflower.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'chore: finalize @doubleflower npm publishing setup'
+          git push origin HEAD:main
