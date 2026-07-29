@@ -1,6 +1,6 @@
 {
 	"name": "@coderdoubleflower/pi-claude",
-	"version": "0.82.1-claude.1",
+	"version": "0.82.1",
 	"description": "Claude Code-styled fork of Pi, a coding agent CLI with read, bash, edit, write tools and session management",
 	"type": "module",
 	"piConfig": {

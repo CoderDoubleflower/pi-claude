@@ -11,7 +11,7 @@ import {
 	ModelRuntime,
 	SessionManager,
 	SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+} from "@coderdoubleflower/pi-claude";
 import {
 	createHarness,
 	type Harness,
