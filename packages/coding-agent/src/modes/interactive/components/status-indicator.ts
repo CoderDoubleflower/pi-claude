@@ -1,6 +1,11 @@
 import { type Component, Loader, type TUI } from "@earendil-works/pi-tui";
 import type { WorkingIndicatorOptions } from "../../../core/extensions/index.ts";
 import { theme } from "../theme/theme.ts";
+import {
+	CLAUDE_WORKING_INDICATOR,
+	colorClaudeWorkingText,
+	createClaudeWorkingMessage,
+} from "./claude-working.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 import { keyText } from "./keybinding-hints.ts";
 
@@ -27,15 +32,23 @@ export class StatusIndicator extends Loader {
 }
 
 export class WorkingStatusIndicator extends StatusIndicator {
-	constructor(ui: TUI, message: string, indicator?: WorkingIndicatorOptions) {
+	private readonly defaultMessage: string;
+
+	constructor(ui: TUI, message?: string, indicator?: WorkingIndicatorOptions) {
+		const defaultMessage = createClaudeWorkingMessage();
 		super(
 			"working",
 			ui,
-			(spinner) => theme.fg("accent", spinner),
-			(text) => theme.fg("muted", text),
-			message,
-			indicator,
+			colorClaudeWorkingText,
+			colorClaudeWorkingText,
+			message ?? defaultMessage,
+			indicator ?? CLAUDE_WORKING_INDICATOR,
 		);
+		this.defaultMessage = defaultMessage;
+	}
+
+	restoreDefaultMessage(suffix = ""): void {
+		this.setMessage(`${this.defaultMessage}${suffix}`);
 	}
 }
 
