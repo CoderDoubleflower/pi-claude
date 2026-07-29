@@ -1,8 +1,25 @@
 import { type Component, Loader, type TUI } from "@earendil-works/pi-tui";
 import type { WorkingIndicatorOptions } from "../../../core/extensions/index.ts";
 import { theme } from "../theme/theme.ts";
+import {
+	CLAUDE_WORKING_INDICATOR,
+	colorClaudeWorkingText,
+	createClaudeWorkingMessage,
+} from "./claude-working.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 import { keyText } from "./keybinding-hints.ts";
+
+const LEGACY_DEFAULT_WORKING_MESSAGE = "Working...";
+
+function resolveWorkingMessage(message: string | undefined, defaultMessage: string): string {
+	if (message === undefined || message === LEGACY_DEFAULT_WORKING_MESSAGE) {
+		return defaultMessage;
+	}
+	if (message.startsWith(`${LEGACY_DEFAULT_WORKING_MESSAGE} (`)) {
+		return `${defaultMessage}${message.slice(LEGACY_DEFAULT_WORKING_MESSAGE.length)}`;
+	}
+	return message;
+}
 
 export type StatusIndicatorKind = "working" | "retry" | "compaction" | "branchSummary";
 
@@ -27,15 +44,23 @@ export class StatusIndicator extends Loader {
 }
 
 export class WorkingStatusIndicator extends StatusIndicator {
-	constructor(ui: TUI, message: string, indicator?: WorkingIndicatorOptions) {
+	private readonly defaultMessage: string;
+
+	constructor(ui: TUI, message?: string, indicator?: WorkingIndicatorOptions) {
+		const defaultMessage = createClaudeWorkingMessage();
 		super(
 			"working",
 			ui,
-			(spinner) => theme.fg("accent", spinner),
-			(text) => theme.fg("muted", text),
-			message,
-			indicator,
+			colorClaudeWorkingText,
+			colorClaudeWorkingText,
+			resolveWorkingMessage(message, defaultMessage),
+			indicator ?? CLAUDE_WORKING_INDICATOR,
 		);
+		this.defaultMessage = defaultMessage;
+	}
+
+	override setMessage(message: string): void {
+		super.setMessage(resolveWorkingMessage(message, this.defaultMessage));
 	}
 }
 
