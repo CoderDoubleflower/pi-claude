@@ -1,0 +1,47 @@
+name: Update fork CLI documentation
+
+on:
+  push:
+    branches:
+      - chore/npm-package-identity
+
+permissions:
+  contents: write
+
+jobs:
+  update-docs:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Replace executable references in documentation
+        run: |
+          python3 <<'PY'
+          import re
+          from pathlib import Path
+
+          roots = [Path("README.md"), Path("packages/coding-agent/README.md")]
+          roots.extend(Path("packages/coding-agent/docs").rglob("*.md"))
+
+          for path in roots:
+              if path.name == "CHANGELOG.md" or not path.exists():
+                  continue
+              text = path.read_text()
+              updated = re.sub(r"(?m)^([ \t]*(?:\$[ \t]+)?)pi(?=(?:[ \t]|$))", r"\1pi-claude", text)
+              updated = re.sub(r"`pi(?=(?:[ \t]|`))", "`pi-claude", updated)
+              if updated != text:
+                  path.write_text(updated)
+          PY
+
+      - name: Clean temporary validation files and commit
+        run: |
+          rm -f .ai-bridge/npm-package-validation.md
+          rm .github/workflows/update-fork-cli-docs.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "docs: use pi-claude executable"
+          git push
