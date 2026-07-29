@@ -72,6 +72,7 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ToolDefinition } from "../extensions/types.ts";
 import { type BashToolOptions, createBashTool, createBashToolDefinition } from "./bash.ts";
 import { createEditTool, createEditToolDefinition, type EditToolOptions } from "./edit.ts";
+import { getToolExecutionArguments } from "./execution-arguments.ts";
 import { createFindTool, createFindToolDefinition, type FindToolOptions } from "./find.ts";
 import { createGrepTool, createGrepToolDefinition, type GrepToolOptions } from "./grep.ts";
 import { createLsTool, createLsToolDefinition, type LsToolOptions } from "./ls.ts";
@@ -93,12 +94,39 @@ export interface ToolsOptions {
 	ls?: LsToolOptions;
 }
 
+type BashDisplayState = {
+	canonicalExecutionArgs?: unknown;
+};
+
+function createBashDisplayToolDefinition(cwd: string, options?: BashToolOptions): ToolDef {
+	const definition = createBashToolDefinition(cwd, options);
+	const renderCall = definition.renderCall;
+	if (!renderCall) return definition;
+
+	return {
+		...definition,
+		renderCall(args, activeTheme, context) {
+			const state = context.state as BashDisplayState;
+			const executionArgs = getToolExecutionArguments(context.toolCallId);
+			if (executionArgs !== undefined) {
+				state.canonicalExecutionArgs = executionArgs;
+			}
+
+			// Never render streamed command fragments. Before execution reaches the
+			// runtime, keep a stable placeholder; the first Bash output update then
+			// replaces it atomically with the exact arguments being executed.
+			const displayArgs = state.canonicalExecutionArgs ?? { command: "" };
+			return renderCall(displayArgs, activeTheme, context);
+		},
+	};
+}
+
 export function createToolDefinition(toolName: ToolName, cwd: string, options?: ToolsOptions): ToolDef {
 	switch (toolName) {
 		case "read":
 			return createReadToolDefinition(cwd, options?.read);
 		case "bash":
-			return createBashToolDefinition(cwd, options?.bash);
+			return createBashDisplayToolDefinition(cwd, options?.bash);
 		case "edit":
 			return createEditToolDefinition(cwd, options?.edit);
 		case "write":
@@ -138,7 +166,7 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 export function createCodingToolDefinitions(cwd: string, options?: ToolsOptions): ToolDef[] {
 	return [
 		createReadToolDefinition(cwd, options?.read),
-		createBashToolDefinition(cwd, options?.bash),
+		createBashDisplayToolDefinition(cwd, options?.bash),
 		createEditToolDefinition(cwd, options?.edit),
 		createWriteToolDefinition(cwd, options?.write),
 	];
@@ -156,7 +184,7 @@ export function createReadOnlyToolDefinitions(cwd: string, options?: ToolsOption
 export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): Record<ToolName, ToolDef> {
 	return {
 		read: createReadToolDefinition(cwd, options?.read),
-		bash: createBashToolDefinition(cwd, options?.bash),
+		bash: createBashDisplayToolDefinition(cwd, options?.bash),
 		edit: createEditToolDefinition(cwd, options?.edit),
 		write: createWriteToolDefinition(cwd, options?.write),
 		grep: createGrepToolDefinition(cwd, options?.grep),
