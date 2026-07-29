@@ -1,0 +1,47 @@
+name: Refresh audit lockfiles
+
+on:
+  push:
+    branches:
+      - fix/npm-audit-july-2026
+    paths:
+      - .github/workflows/refresh-audit-locks.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/npm-audit-july-2026
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Refresh vulnerable lockfile entries
+        run: npm audit fix --package-lock-only --ignore-scripts --no-fund
+
+      - name: Regenerate coding-agent shrinkwrap
+        run: node scripts/generate-coding-agent-shrinkwrap.mjs
+
+      - name: Verify production audit
+        run: npm audit --omit=dev --audit-level=moderate
+
+      - name: Commit generated lockfiles
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json packages/coding-agent/npm-shrinkwrap.json
+          if git diff --cached --quiet; then
+            echo "No lockfile changes generated"
+            exit 1
+          fi
+          git commit -m "fix: update vulnerable transitive dependencies"
+          git push origin HEAD:fix/npm-audit-july-2026
