@@ -1,5 +1,13 @@
 import { Editor, type EditorOptions, type EditorTheme, type TUI } from "@earendil-works/pi-tui";
 import type { AppKeybinding, KeybindingsManager } from "../../../core/keybindings.ts";
+import { stripAnsi } from "../../../utils/ansi.ts";
+
+const PROMPT_PREFIX_WIDTH = 2;
+
+function isEditorBorderLine(line: string): boolean {
+	const plain = stripAnsi(line);
+	return /^─+$/.test(plain) || /^─── [↑↓] \d+ more /.test(plain);
+}
 
 /**
  * Custom editor that handles app-level keybindings for coding-agent.
@@ -18,6 +26,42 @@ export class CustomEditor extends Editor {
 	constructor(tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager, options?: EditorOptions) {
 		super(tui, theme, options);
 		this.keybindings = keybindings;
+	}
+
+	override render(width: number): string[] {
+		if (width <= PROMPT_PREFIX_WIDTH) {
+			return super.render(width);
+		}
+
+		// Render the editor two columns narrower so the prompt marker participates
+		// in wrapping and cursor layout instead of clipping the right edge.
+		const lines = super.render(width - PROMPT_PREFIX_WIDTH);
+		let bottomBorderIndex = -1;
+		for (let index = lines.length - 1; index > 0; index--) {
+			if (isEditorBorderLine(lines[index] ?? "")) {
+				bottomBorderIndex = index;
+				break;
+			}
+		}
+		if (bottomBorderIndex === -1) {
+			return lines;
+		}
+
+		const borderExtension = this.borderColor("─".repeat(PROMPT_PREFIX_WIDTH));
+		const continuationPrefix = " ".repeat(PROMPT_PREFIX_WIDTH);
+		const promptPrefix = `${this.borderColor("❯")} `;
+		const firstLogicalLineIsVisible = !stripAnsi(lines[0] ?? "").includes("↑");
+
+		return lines.map((line, index) => {
+			if (index === 0 || index === bottomBorderIndex) {
+				return `${line}${borderExtension}`;
+			}
+			if (index < bottomBorderIndex) {
+				return `${index === 1 && firstLogicalLineIsVisible ? promptPrefix : continuationPrefix}${line}`;
+			}
+			// Autocomplete rows align with the editable content, not the marker.
+			return `${continuationPrefix}${line}`;
+		});
 	}
 
 	/**
