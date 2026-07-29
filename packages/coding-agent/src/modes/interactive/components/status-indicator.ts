@@ -9,6 +9,18 @@ import {
 import { CountdownTimer } from "./countdown-timer.ts";
 import { keyText } from "./keybinding-hints.ts";
 
+const LEGACY_DEFAULT_WORKING_MESSAGE = "Working...";
+
+function resolveWorkingMessage(message: string | undefined, defaultMessage: string): string {
+	if (message === undefined || message === LEGACY_DEFAULT_WORKING_MESSAGE) {
+		return defaultMessage;
+	}
+	if (message.startsWith(`${LEGACY_DEFAULT_WORKING_MESSAGE} (`)) {
+		return `${defaultMessage}${message.slice(LEGACY_DEFAULT_WORKING_MESSAGE.length)}`;
+	}
+	return message;
+}
+
 export type StatusIndicatorKind = "working" | "retry" | "compaction" | "branchSummary";
 
 export class StatusIndicator extends Loader {
@@ -41,14 +53,14 @@ export class WorkingStatusIndicator extends StatusIndicator {
 			ui,
 			colorClaudeWorkingText,
 			colorClaudeWorkingText,
-			message ?? defaultMessage,
+			resolveWorkingMessage(message, defaultMessage),
 			indicator ?? CLAUDE_WORKING_INDICATOR,
 		);
 		this.defaultMessage = defaultMessage;
 	}
 
-	restoreDefaultMessage(suffix = ""): void {
-		this.setMessage(`${this.defaultMessage}${suffix}`);
+	override setMessage(message: string): void {
+		super.setMessage(resolveWorkingMessage(message, this.defaultMessage));
 	}
 }
 
