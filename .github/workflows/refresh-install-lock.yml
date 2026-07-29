@@ -1,0 +1,50 @@
+name: Refresh coding-agent install lock
+
+on:
+  push:
+    branches:
+      - fix/npm-audit-july-2026
+    paths:
+      - .github/workflows/refresh-install-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/npm-audit-july-2026
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Regenerate coding-agent install lock
+        run: node scripts/generate-coding-agent-install-lock.mjs
+
+      - name: Verify generated locks
+        run: |
+          node scripts/generate-coding-agent-shrinkwrap.mjs --check
+          node scripts/generate-coding-agent-install-lock.mjs --check
+          npm audit --omit=dev --audit-level=moderate
+
+      - name: Commit generated install lock
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/coding-agent/install-lock
+          if git diff --cached --quiet; then
+            echo "No install-lock changes generated"
+            exit 1
+          fi
+          git commit -m "fix: refresh coding-agent install lock"
+          git push origin HEAD:fix/npm-audit-july-2026
