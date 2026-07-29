@@ -70,7 +70,12 @@ export {
 
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ToolDefinition } from "../extensions/types.ts";
-import { type BashToolOptions, createBashTool, createBashToolDefinition } from "./bash.ts";
+import {
+	type BashToolInput,
+	type BashToolOptions,
+	createBashTool,
+	createBashToolDefinition,
+} from "./bash.ts";
 import { createEditTool, createEditToolDefinition, type EditToolOptions } from "./edit.ts";
 import { getToolExecutionArguments } from "./execution-arguments.ts";
 import { createFindTool, createFindToolDefinition, type FindToolOptions } from "./find.ts";
@@ -95,19 +100,22 @@ export interface ToolsOptions {
 }
 
 type BashDisplayState = {
-	canonicalExecutionArgs?: unknown;
+	canonicalExecutionArgs?: BashToolInput;
 };
 
-function createBashDisplayToolDefinition(cwd: string, options?: BashToolOptions): ToolDef {
+function createBashDisplayToolDefinition(
+	cwd: string,
+	options?: BashToolOptions,
+): ReturnType<typeof createBashToolDefinition> {
 	const definition = createBashToolDefinition(cwd, options);
 	const renderCall = definition.renderCall;
 	if (!renderCall) return definition;
 
 	return {
 		...definition,
-		renderCall(args, activeTheme, context) {
-			const state = context.state as BashDisplayState;
-			const executionArgs = getToolExecutionArguments(context.toolCallId);
+		renderCall(_args, activeTheme, context) {
+			const state = context.state as typeof context.state & BashDisplayState;
+			const executionArgs = getToolExecutionArguments<BashToolInput>(context.toolCallId);
 			if (executionArgs !== undefined) {
 				state.canonicalExecutionArgs = executionArgs;
 			}
@@ -115,7 +123,7 @@ function createBashDisplayToolDefinition(cwd: string, options?: BashToolOptions)
 			// Never render streamed command fragments. Before execution reaches the
 			// runtime, keep a stable placeholder; the first Bash output update then
 			// replaces it atomically with the exact arguments being executed.
-			const displayArgs = state.canonicalExecutionArgs ?? { command: "" };
+			const displayArgs: BashToolInput = state.canonicalExecutionArgs ?? { command: "" };
 			return renderCall(displayArgs, activeTheme, context);
 		},
 	};
