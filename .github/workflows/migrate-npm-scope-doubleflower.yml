@@ -1,0 +1,57 @@
+name: Migrate npm scope to doubleflower
+
+on:
+  push:
+    branches:
+      - chore/automated-npm-publishing
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: chore/automated-npm-publishing
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Replace npm scope
+        shell: bash
+        run: |
+          git grep -Il '@coderdoubleflower/pi-' -- ':!package-lock.json' ':!packages/coding-agent/npm-shrinkwrap.json' ':!packages/coding-agent/install-lock/package-lock.json' | \
+            xargs -r sed -i 's/@coderdoubleflower\/pi-/@doubleflower\/pi-/g'
+          sed -i 's/@coderdoubleflower\/pi-/@doubleflower\/pi-/g' package-lock.json
+          sed -i 's/@coderdoubleflower\/pi-/@doubleflower\/pi-/g' packages/coding-agent/npm-shrinkwrap.json
+          sed -i 's/@coderdoubleflower\/pi-/@doubleflower\/pi-/g' packages/coding-agent/install-lock/package-lock.json
+
+      - name: Refresh generated lock metadata
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          node scripts/generate-coding-agent-shrinkwrap.mjs
+          node scripts/generate-coding-agent-install-lock.mjs
+
+      - name: Validate migration
+        run: |
+          npm ci --ignore-scripts
+          npm run build:offline
+          npm run check:shrinkwrap
+          npm run check:install-lock:coding-agent
+          npm pack --dry-run --ignore-scripts --workspace=@doubleflower/pi-claude
+
+      - name: Remove one-off workflow and commit
+        shell: bash
+        run: |
+          rm .github/workflows/migrate-npm-scope-doubleflower.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'chore: use @doubleflower npm scope'
+          git push origin HEAD:chore/automated-npm-publishing
