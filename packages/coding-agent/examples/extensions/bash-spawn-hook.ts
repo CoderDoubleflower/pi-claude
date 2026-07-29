@@ -7,8 +7,8 @@
  *   pi -e ./bash-spawn-hook.ts
  */
 
-import type { ExtensionAPI } from "@coderdoubleflower/pi-claude";
-import { createBashTool } from "@coderdoubleflower/pi-claude";
+import type { ExtensionAPI } from "@doubleflower/pi-claude";
+import { createBashTool } from "@doubleflower/pi-claude";
 
 export default function (pi: ExtensionAPI) {
 	const cwd = process.cwd();

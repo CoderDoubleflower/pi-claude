@@ -18,7 +18,7 @@ import {
 	DefaultResourceLoader,
 	getAgentDir,
 	SessionManager,
-} from "@coderdoubleflower/pi-claude";
+} from "@doubleflower/pi-claude";
 
 // Extensions are discovered automatically from standard locations.
 // You can also add paths via settings.json or DefaultResourceLoader options.
@@ -57,7 +57,7 @@ try {
 
 // Example extension file (./my-logging-extension.ts):
 /*
-import type { ExtensionAPI } from "@coderdoubleflower/pi-claude";
+import type { ExtensionAPI } from "@doubleflower/pi-claude";
 
 export default function (pi: ExtensionAPI) {
 	pi.on("agent_start", async () => {

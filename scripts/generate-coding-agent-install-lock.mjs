@@ -11,9 +11,9 @@ const outputDir = join(codingAgentDir, "install-lock");
 const rootLockfilePath = join(repoRoot, "package-lock.json");
 const outputPackageJsonPath = join(outputDir, "package.json");
 const outputLockfilePath = join(outputDir, "package-lock.json");
-const internalPackagePrefixes = ["@earendil-works/pi-", "@coderdoubleflower/pi-"];
+const internalPackagePrefixes = ["@earendil-works/pi-", "@doubleflower/pi-"];
 const isInternalPackageName = (name) => internalPackagePrefixes.some((prefix) => name.startsWith(prefix));
-const installPackageName = "@coderdoubleflower/pi-claude-install";
+const installPackageName = "@doubleflower/pi-claude-install";
 const allowedInstallScriptPackages = new Map([
 	["@google/genai@1.52.0", "preinstall is a no-op in the published package"],
 	["protobufjs@7.6.5", "postinstall only warns about protobufjs version scheme mismatches"],
@@ -260,7 +260,7 @@ function createRootLockEntry(installerPackageJson) {
 	return sortedPackageEntry(entry);
 }
 
-function validateGeneratedFiles(installerPackageJson, installLock, internalNames) {
+function validateGeneratedFiles(installerPackageJson, installLock, internalNames, internalWorkspaces) {
 	const errors = [];
 	const rootEntry = installLock.packages[""];
 	const includedPackageNames = new Set();
@@ -295,8 +295,11 @@ function validateGeneratedFiles(installerPackageJson, installLock, internalNames
 		if (entry.dev || entry.devOptional || entry.extraneous) {
 			errors.push(`${lockPath || "root"} contains dev/extraneous metadata`);
 		}
-		if (packageName && isInternalPackageName(packageName) && entry.version !== installerPackageJson.version) {
-			errors.push(`${lockPath} internal package version ${entry.version} does not match ${installerPackageJson.version}`);
+		if (packageName && isInternalPackageName(packageName)) {
+			const expectedVersion = internalWorkspaces.get(packageName)?.packageJson.version;
+			if (expectedVersion && entry.version !== expectedVersion) {
+				errors.push(`${lockPath} internal package version ${entry.version} does not match workspace version ${expectedVersion}`);
+			}
 		}
 		if (entry.hasInstallScript) {
 			if (!packageName || !entry.version) {
@@ -400,7 +403,7 @@ function generateInstallLock() {
 		packages: sortedObject(installLockPackages),
 	};
 
-	validateGeneratedFiles(installerPackageJson, installLock, internalNames);
+	validateGeneratedFiles(installerPackageJson, installLock, internalNames, internalWorkspaces);
 	return { installerPackageJson, installLock };
 }
 

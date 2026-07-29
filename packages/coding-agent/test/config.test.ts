@@ -152,8 +152,8 @@ describe("detectInstallMethod", () => {
 		);
 
 		expect(detectInstallMethod()).toBe("pnpm");
-		expect(getUpdateInstruction("@coderdoubleflower/pi-claude")).toBe(
-			"Run: pnpm install -g --ignore-scripts --config.minimumReleaseAge=0 @coderdoubleflower/pi-claude",
+		expect(getUpdateInstruction("@doubleflower/pi-claude")).toBe(
+			"Run: pnpm install -g --ignore-scripts --config.minimumReleaseAge=0 @doubleflower/pi-claude",
 		);
 	});
 
@@ -161,16 +161,16 @@ describe("detectInstallMethod", () => {
 		setExecPath("/usr/local/bin/node");
 
 		expect(detectInstallMethod()).toBe("unknown");
-		expect(getSelfUpdateCommand("@coderdoubleflower/pi-claude")).toBeUndefined();
-		expect(getUpdateInstruction("@coderdoubleflower/pi-claude")).toBe(
-			"Update @coderdoubleflower/pi-claude using the package manager, wrapper, or source checkout that provides this installation.",
+		expect(getSelfUpdateCommand("@doubleflower/pi-claude")).toBeUndefined();
+		expect(getUpdateInstruction("@doubleflower/pi-claude")).toBe(
+			"Update @doubleflower/pi-claude using the package manager, wrapper, or source checkout that provides this installation.",
 		);
 	});
 
 	test("self-updates npm installs from custom prefixes", () => {
 		const { prefix } = createNpmPrefixInstall();
 
-		const command = getSelfUpdateCommand("@coderdoubleflower/pi-claude");
+		const command = getSelfUpdateCommand("@doubleflower/pi-claude");
 
 		expect(detectInstallMethod()).toBe("npm");
 		expect(command).toEqual({
@@ -182,18 +182,18 @@ describe("detectInstallMethod", () => {
 				"-g",
 				"--ignore-scripts",
 				"--min-release-age=0",
-				"@coderdoubleflower/pi-claude",
+				"@doubleflower/pi-claude",
 			],
-			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @coderdoubleflower/pi-claude`,
+			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @doubleflower/pi-claude`,
 		});
 	});
 
 	test("self-updates exact npm versions without uninstalling the current package", () => {
 		const { prefix } = createNpmPrefixInstall();
 
-		const command = getSelfUpdateCommand("@coderdoubleflower/pi-claude", undefined, {
-			packageName: "@coderdoubleflower/pi-claude",
-			installSpec: "@coderdoubleflower/pi-claude@1.2.3",
+		const command = getSelfUpdateCommand("@doubleflower/pi-claude", undefined, {
+			packageName: "@doubleflower/pi-claude",
+			installSpec: "@doubleflower/pi-claude@1.2.3",
 		});
 
 		expect(command).toEqual({
@@ -205,9 +205,9 @@ describe("detectInstallMethod", () => {
 				"-g",
 				"--ignore-scripts",
 				"--min-release-age=0",
-				"@coderdoubleflower/pi-claude@1.2.3",
+				"@doubleflower/pi-claude@1.2.3",
 			],
-			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @coderdoubleflower/pi-claude@1.2.3`,
+			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @doubleflower/pi-claude@1.2.3`,
 		});
 	});
 
@@ -238,7 +238,7 @@ describe("detectInstallMethod", () => {
 	test("self-update respects configured npmCommand", () => {
 		const { prefix } = createNpmPrefixInstall();
 
-		const command = getSelfUpdateCommand("@coderdoubleflower/pi-claude", ["npm", "--prefix", prefix]);
+		const command = getSelfUpdateCommand("@doubleflower/pi-claude", ["npm", "--prefix", prefix]);
 
 		expect(command).toEqual({
 			command: "npm",
@@ -249,16 +249,16 @@ describe("detectInstallMethod", () => {
 				"-g",
 				"--ignore-scripts",
 				"--min-release-age=0",
-				"@coderdoubleflower/pi-claude",
+				"@doubleflower/pi-claude",
 			],
-			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @coderdoubleflower/pi-claude`,
+			display: `npm --prefix ${prefix} install -g --ignore-scripts --min-release-age=0 @doubleflower/pi-claude`,
 		});
 	});
 
 	test("self-update treats empty npmCommand as unset", () => {
 		const { prefix } = createNpmPrefixInstall();
 
-		const command = getSelfUpdateCommand("@coderdoubleflower/pi-claude", []);
+		const command = getSelfUpdateCommand("@doubleflower/pi-claude", []);
 
 		expect(command?.args).toEqual([
 			"--prefix",
@@ -267,17 +267,17 @@ describe("detectInstallMethod", () => {
 			"-g",
 			"--ignore-scripts",
 			"--min-release-age=0",
-			"@coderdoubleflower/pi-claude",
+			"@doubleflower/pi-claude",
 		]);
 	});
 
 	test("quotes npm self-update display paths", () => {
 		const { prefix } = createNpmPrefixInstall("pi prefix ");
 
-		const command = getSelfUpdateCommand("@coderdoubleflower/pi-claude");
+		const command = getSelfUpdateCommand("@doubleflower/pi-claude");
 
 		expect(command?.display).toBe(
-			`npm --prefix "${prefix}" install -g --ignore-scripts --min-release-age=0 @coderdoubleflower/pi-claude`,
+			`npm --prefix "${prefix}" install -g --ignore-scripts --min-release-age=0 @doubleflower/pi-claude`,
 		);
 	});
 
@@ -287,21 +287,21 @@ describe("detectInstallMethod", () => {
 		setExecPath(`${packageDir}\\dist\\cli.js`);
 
 		expect(detectInstallMethod()).toBe("npm");
-		expect(getUpdateInstruction("@coderdoubleflower/pi-claude")).toBe(
-			"Run: npm install -g --ignore-scripts --min-release-age=0 @coderdoubleflower/pi-claude",
+		expect(getUpdateInstruction("@doubleflower/pi-claude")).toBe(
+			"Run: npm install -g --ignore-scripts --min-release-age=0 @doubleflower/pi-claude",
 		);
 	});
 
 	test("self-updates bun global installs from bun pm bin", () => {
 		createBunGlobalInstall();
 
-		const command = getSelfUpdateCommand("@coderdoubleflower/pi-claude");
+		const command = getSelfUpdateCommand("@doubleflower/pi-claude");
 
 		expect(detectInstallMethod()).toBe("bun");
 		expect(command).toEqual({
 			command: "bun",
-			args: ["install", "-g", "--ignore-scripts", "--minimum-release-age=0", "@coderdoubleflower/pi-claude"],
-			display: "bun install -g --ignore-scripts --minimum-release-age=0 @coderdoubleflower/pi-claude",
+			args: ["install", "-g", "--ignore-scripts", "--minimum-release-age=0", "@doubleflower/pi-claude"],
+			display: "bun install -g --ignore-scripts --minimum-release-age=0 @doubleflower/pi-claude",
 		});
 	});
 
@@ -335,7 +335,7 @@ describe("detectInstallMethod", () => {
 		const temp = mkdtempSync(join(tmpdir(), "pi-pnpm11-"));
 		const binDir = join(temp, "bin");
 		const root = join(temp, "Library", "pnpm", "global", "v11");
-		const packageName = "@coderdoubleflower/pi-claude";
+		const packageName = "@doubleflower/pi-claude";
 		const globalPackageDir = join(root, "11e9a", "node_modules", "@earendil-works", "pi-coding-agent");
 		const storePackageDir = join(
 			temp,
@@ -429,8 +429,8 @@ describe("detectInstallMethod", () => {
 		const { packageDir } = createNpmPrefixInstall();
 		chmodSync(packageDir, 0o500);
 
-		expect(getSelfUpdateCommand("@coderdoubleflower/pi-claude")).toBeUndefined();
-		expect(getSelfUpdateUnavailableInstruction("@coderdoubleflower/pi-claude")).toContain(
+		expect(getSelfUpdateCommand("@doubleflower/pi-claude")).toBeUndefined();
+		expect(getSelfUpdateUnavailableInstruction("@doubleflower/pi-claude")).toContain(
 			"the install path is not writable",
 		);
 	});

@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExtensionAPI } from "@coderdoubleflower/pi-claude";
+import type { ExtensionAPI } from "@doubleflower/pi-claude";
 
 const baseDir = dirname(fileURLToPath(import.meta.url));
 

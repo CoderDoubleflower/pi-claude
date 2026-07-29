@@ -22,7 +22,7 @@ import {
 	type SimpleStreamOptions,
 	type ThinkingLevelMap,
 } from "@earendil-works/pi-ai/compat";
-import type { ExtensionAPI } from "@coderdoubleflower/pi-claude";
+import type { ExtensionAPI } from "@doubleflower/pi-claude";
 
 // =============================================================================
 // Constants

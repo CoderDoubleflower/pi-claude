@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext } from "@coderdoubleflower/pi-claude";
+import type { ExtensionAPI, ExtensionContext } from "@doubleflower/pi-claude";
 
 const COMPACT_THRESHOLD_TOKENS = 100_000;
 

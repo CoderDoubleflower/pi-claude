@@ -1,11 +1,11 @@
 {
-	"name": "@coderdoubleflower/pi-claude",
+	"name": "@doubleflower/pi-claude",
 	"version": "0.82.1",
 	"lockfileVersion": 3,
 	"requires": true,
 	"packages": {
 		"": {
-			"name": "@coderdoubleflower/pi-claude",
+			"name": "@doubleflower/pi-claude",
 			"version": "0.82.1",
 			"license": "MIT",
 			"dependencies": {

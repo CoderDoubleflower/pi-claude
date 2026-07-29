@@ -17,7 +17,7 @@ pkg update && pkg upgrade
 pkg install nodejs termux-api git
 
 # Install pi
-npm install -g --ignore-scripts @coderdoubleflower/pi-claude
+npm install -g --ignore-scripts @doubleflower/pi-claude
 
 # Create config directory
 mkdir -p ~/.pi/agent

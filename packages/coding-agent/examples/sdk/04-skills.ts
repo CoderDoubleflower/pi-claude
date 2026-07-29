@@ -12,7 +12,7 @@ import {
 	getAgentDir,
 	SessionManager,
 	type Skill,
-} from "@coderdoubleflower/pi-claude";
+} from "@doubleflower/pi-claude";
 
 // Or define custom skills inline
 const customSkill: Skill = {

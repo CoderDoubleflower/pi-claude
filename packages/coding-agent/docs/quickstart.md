@@ -7,7 +7,7 @@ This page gets you from install to a useful first pi session.
 Pi is distributed as an npm package:
 
 ```bash
-npm install -g --ignore-scripts @coderdoubleflower/pi-claude
+npm install -g --ignore-scripts @doubleflower/pi-claude
 ```
 
 `--ignore-scripts` disables dependency lifecycle scripts during install. Pi does not require install scripts for normal npm installs.
@@ -18,16 +18,16 @@ Use the package manager that installed pi. The curl installer uses npm globally,
 
 ```bash
 # curl installer or npm install -g
-npm uninstall -g @coderdoubleflower/pi-claude
+npm uninstall -g @doubleflower/pi-claude
 
 # pnpm
-pnpm remove -g @coderdoubleflower/pi-claude
+pnpm remove -g @doubleflower/pi-claude
 
 # Yarn
-yarn global remove @coderdoubleflower/pi-claude
+yarn global remove @doubleflower/pi-claude
 
 # Bun
-bun uninstall -g @coderdoubleflower/pi-claude
+bun uninstall -g @doubleflower/pi-claude
 ```
 
 Uninstalling pi leaves settings, credentials, sessions, and installed pi packages in `~/.pi/agent/`.

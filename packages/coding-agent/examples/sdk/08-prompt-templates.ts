@@ -11,7 +11,7 @@ import {
 	getAgentDir,
 	type PromptTemplate,
 	SessionManager,
-} from "@coderdoubleflower/pi-claude";
+} from "@doubleflower/pi-claude";
 
 // Define custom templates
 const deployTemplate: PromptTemplate = {

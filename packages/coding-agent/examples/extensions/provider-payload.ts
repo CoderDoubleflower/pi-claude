@@ -1,6 +1,6 @@
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
-import { CONFIG_DIR_NAME, type ExtensionAPI } from "@coderdoubleflower/pi-claude";
+import { CONFIG_DIR_NAME, type ExtensionAPI } from "@doubleflower/pi-claude";
 
 export default function (pi: ExtensionAPI) {
 	pi.on("before_provider_request", (event, ctx) => {

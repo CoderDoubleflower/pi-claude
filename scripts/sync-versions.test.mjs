@@ -33,7 +33,7 @@ test("synchronizes private dependencies without touching registry aliases, gener
 			version: "2.0.0",
 		});
 		await writeManifest(root, "packages/coding-agent", {
-			name: "@coderdoubleflower/pi-claude",
+			name: "@doubleflower/pi-claude",
 			version: "2.0.0",
 		});
 		await writeManifest(root, "packages/evals", {
@@ -41,7 +41,7 @@ test("synchronizes private dependencies without touching registry aliases, gener
 			version: "9.9.9",
 			private: true,
 			dependencies: {
-				"@coderdoubleflower/pi-claude": "^1.0.0",
+				"@doubleflower/pi-claude": "^1.0.0",
 				"@mariozechner/pi-ai": "npm:@earendil-works/pi-ai@1.0.0",
 			},
 		});
@@ -50,7 +50,7 @@ test("synchronizes private dependencies without touching registry aliases, gener
 			version: "0.0.0",
 			private: true,
 			dependencies: {
-				"@coderdoubleflower/pi-claude": "^1.0.0",
+				"@doubleflower/pi-claude": "^1.0.0",
 			},
 		});
 
@@ -58,10 +58,10 @@ test("synchronizes private dependencies without touching registry aliases, gener
 		assert.equal(result.status, 0, result.stderr);
 
 		const evalsManifest = await readManifest(root, "packages/evals");
-		assert.equal(evalsManifest.dependencies["@coderdoubleflower/pi-claude"], "^2.0.0");
+		assert.equal(evalsManifest.dependencies["@doubleflower/pi-claude"], "^2.0.0");
 		assert.equal(evalsManifest.dependencies["@mariozechner/pi-ai"], "npm:@earendil-works/pi-ai@1.0.0");
 		const generatedManifest = await readManifest(root, "packages/coding-agent/install-lock");
-		assert.equal(generatedManifest.dependencies["@coderdoubleflower/pi-claude"], "^1.0.0");
+		assert.equal(generatedManifest.dependencies["@doubleflower/pi-claude"], "^1.0.0");
 
 		await writeManifest(root, "packages/ai", {
 			name: "@earendil-works/pi-ai",

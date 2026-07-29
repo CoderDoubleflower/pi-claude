@@ -7,7 +7,7 @@ Pi is a minimal terminal coding harness. It is designed to stay small at the cor
 Install Pi with npm:
 
 ```bash
-npm install -g --ignore-scripts @coderdoubleflower/pi-claude
+npm install -g --ignore-scripts @doubleflower/pi-claude
 ```
 
 `--ignore-scripts` disables dependency lifecycle scripts during install. Pi does not require install scripts for normal npm installs.
@@ -21,10 +21,10 @@ curl -fsSL https://pi.dev/install.sh | sh
 To uninstall pi itself, use npm for curl and npm installs:
 
 ```bash
-npm uninstall -g @coderdoubleflower/pi-claude
+npm uninstall -g @doubleflower/pi-claude
 ```
 
-For pnpm, Yarn, or Bun installs, use the matching global remove command: `pnpm remove -g @coderdoubleflower/pi-claude`, `yarn global remove @coderdoubleflower/pi-claude`, or `bun uninstall -g @coderdoubleflower/pi-claude`.
+For pnpm, Yarn, or Bun installs, use the matching global remove command: `pnpm remove -g @doubleflower/pi-claude`, `yarn global remove @doubleflower/pi-claude`, or `bun uninstall -g @doubleflower/pi-claude`.
 
 Then run it in a project directory:
 

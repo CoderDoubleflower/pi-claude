@@ -39,7 +39,7 @@ import {
   ModelRuntime,
   SessionManager,
   SettingsManager,
-} from "@coderdoubleflower/pi-claude";
+} from "@doubleflower/pi-claude";
 
 const modelRuntime = await ModelRuntime.create();
 

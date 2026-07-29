@@ -11,7 +11,7 @@ import {
 	ModelRuntime,
 	SessionManager,
 	SettingsManager,
-} from "@coderdoubleflower/pi-claude";
+} from "@doubleflower/pi-claude";
 import {
 	createHarness,
 	type Harness,

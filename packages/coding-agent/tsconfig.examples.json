@@ -3,8 +3,8 @@
 	"compilerOptions": {
 		"noEmit": true,
 		"paths": {
-			"@coderdoubleflower/pi-claude": ["./src/index.ts"],
-			"@coderdoubleflower/pi-claude/hooks": ["./src/core/hooks/index.ts"],
+			"@doubleflower/pi-claude": ["./src/index.ts"],
+			"@doubleflower/pi-claude/hooks": ["./src/core/hooks/index.ts"],
 			"@earendil-works/pi-tui": ["../tui/src/index.ts"],
 			"@earendil-works/pi-ai": ["../ai/src/index.ts"],
 			"typebox": ["../../node_modules/typebox"]

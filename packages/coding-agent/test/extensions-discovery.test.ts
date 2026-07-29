@@ -55,7 +55,7 @@ describe("extensions discovery", () => {
 		fs.writeFileSync(
 			path.join(extensionsDir, "coding-agent-import.ts"),
 			`
-				import { getAgentDir } from "@coderdoubleflower/pi-claude";
+				import { getAgentDir } from "@doubleflower/pi-claude";
 				void getAgentDir;
 				export default function(pi) {
 					pi.registerCommand("test", { handler: async () => {} });

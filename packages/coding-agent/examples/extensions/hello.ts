@@ -3,7 +3,7 @@
  */
 
 import { Type } from "@earendil-works/pi-ai";
-import { defineTool, type ExtensionAPI } from "@coderdoubleflower/pi-claude";
+import { defineTool, type ExtensionAPI } from "@doubleflower/pi-claude";
 
 const helloTool = defineTool({
 	name: "hello",

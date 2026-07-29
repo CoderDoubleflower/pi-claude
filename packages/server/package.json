@@ -40,7 +40,7 @@
 		"node": ">=22.19.0"
 	},
 	"dependencies": {
-		"@coderdoubleflower/pi-claude": "^0.82.1"
+		"@doubleflower/pi-claude": "^0.82.1"
 	},
 	"devDependencies": {
 		"shx": "0.4.0"

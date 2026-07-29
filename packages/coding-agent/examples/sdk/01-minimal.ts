@@ -5,7 +5,7 @@
  * from cwd and ~/.pi/agent. Model chosen from settings or first available.
  */
 
-import { createAgentSession } from "@coderdoubleflower/pi-claude";
+import { createAgentSession } from "@doubleflower/pi-claude";
 
 const { session } = await createAgentSession();
 

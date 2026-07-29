@@ -1,10 +1,10 @@
 {
-	"name": "@coderdoubleflower/pi-claude-install",
+	"name": "@doubleflower/pi-claude-install",
 	"version": "0.82.1",
 	"private": true,
 	"description": "Lockfile root used by the Pi installer and updater.",
 	"dependencies": {
-		"@coderdoubleflower/pi-claude": "0.82.1"
+		"@doubleflower/pi-claude": "0.82.1"
 	},
 	"overrides": {
 		"protobufjs": "7.6.5",
