@@ -34,6 +34,15 @@ jobs:
           node scripts/generate-coding-agent-shrinkwrap.mjs
           node scripts/generate-coding-agent-install-lock.mjs
 
+      - name: Commit migrated scope
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m 'chore: use @doubleflower npm scope'
+          git push origin HEAD:chore/automated-npm-publishing
+
       - name: Validate migration
         run: |
           npm ci --ignore-scripts
@@ -41,13 +50,3 @@ jobs:
           npm run check:shrinkwrap
           npm run check:install-lock:coding-agent
           npm pack --dry-run --ignore-scripts --workspace=@doubleflower/pi-claude
-
-      - name: Remove one-off workflow and commit
-        shell: bash
-        run: |
-          rm .github/workflows/migrate-npm-scope-doubleflower.yml
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
-          git commit -m 'chore: use @doubleflower npm scope'
-          git push origin HEAD:chore/automated-npm-publishing
