@@ -1,5 +1,6 @@
 import { Box, Container, Markdown, type MarkdownTheme } from "@earendil-works/pi-tui";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
+import { MessageMarkerComponent } from "./message-marker.ts";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";
 const OSC133_ZONE_END = "\x1b]133;B\x07";
@@ -28,18 +29,19 @@ export class UserMessageComponent extends Container {
 
 	private rebuild(): void {
 		this.clear();
-		const contentBox = new Box(this.outputPad, 0, (content: string) => theme.bg("userMessageBg", content));
+		const contentBox = new Box(0, 0, (content: string) => theme.bg("userMessageBg", content));
+		const markdown = new Markdown(
+			this.text,
+			0,
+			0,
+			this.markdownTheme,
+			{
+				color: (content: string) => theme.fg("userMessageText", content),
+			},
+			{ preserveOrderedListMarkers: true, preserveBackslashEscapes: true },
+		);
 		contentBox.addChild(
-			new Markdown(
-				this.text,
-				0,
-				0,
-				this.markdownTheme,
-				{
-					color: (content: string) => theme.fg("userMessageText", content),
-				},
-				{ preserveOrderedListMarkers: true, preserveBackslashEscapes: true },
-			),
+			new MessageMarkerComponent(markdown, theme.fg("userMessageText", "❯"), this.outputPad),
 		);
 		this.addChild(contentBox);
 	}
