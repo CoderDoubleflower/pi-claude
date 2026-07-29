@@ -23,7 +23,7 @@ npm install -g --ignore-scripts @coderdoubleflower/pi-claude
 mkdir -p ~/.pi/agent
 
 # Run pi
-pi
+pi-claude
 ```
 
 ## Clipboard Support
