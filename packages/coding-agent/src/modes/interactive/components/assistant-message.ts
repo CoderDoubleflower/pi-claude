@@ -1,6 +1,7 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { type Component, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@earendil-works/pi-tui";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
+import { MessageMarkerComponent } from "./message-marker.ts";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";
 const OSC133_ZONE_END = "\x1b]133;B\x07";
@@ -159,18 +160,27 @@ export class AssistantMessageComponent extends Container {
 					.slice(i + 1)
 					.some((c) => (c.type === "text" && c.text.trim()) || (c.type === "thinking" && c.thinking.trim()));
 
+				const thinkingMarker = theme.fg("thinkingText", "∴");
 				if (this.hideThinkingBlock) {
 					// Show one static label for each run of thinking blocks when hidden.
 					this.contentContainer.addChild(
-						new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), this.outputPad, 0),
+						new MessageMarkerComponent(
+							new Text(theme.italic(theme.fg("thinkingText", this.hiddenThinkingLabel)), 0, 0),
+							thinkingMarker,
+							this.outputPad,
+						),
 					);
 				} else {
 					// Render each run of thinking blocks as one Markdown section.
 					this.contentContainer.addChild(
-						new Markdown(thinkingBlocks.join("\n\n"), this.outputPad, 0, this.markdownTheme, {
-							color: (text: string) => theme.fg("thinkingText", text),
-							italic: true,
-						}),
+						new MessageMarkerComponent(
+							new Markdown(thinkingBlocks.join("\n\n"), 0, 0, this.markdownTheme, {
+								color: (text: string) => theme.fg("thinkingText", text),
+								italic: true,
+							}),
+							thinkingMarker,
+							this.outputPad,
+						),
 					);
 				}
 				if (hasVisibleContentAfter) {
