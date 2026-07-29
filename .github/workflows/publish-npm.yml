@@ -1,0 +1,135 @@
+name: Publish pi-claude to npm
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: Version increment when an exact version is not supplied
+        required: true
+        default: patch
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      version:
+        description: Optional exact version in x.y.z form
+        required: false
+        type: string
+  push:
+    tags:
+      - pi-claude-v*
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: npm-publish-pi-claude
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Ensure trusted-publishing compatible npm
+        run: npm install --global npm@latest
+
+      - name: Prepare requested version
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Run this workflow from the main branch." >&2
+            exit 1
+          fi
+          target='${{ inputs.version }}'
+          if [[ -z "$target" ]]; then
+            target='${{ inputs.bump }}'
+          fi
+          node scripts/prepare-pi-claude-release.mjs "$target"
+          release_version="$(node -p "require('./packages/coding-agent/package.json').version")"
+          echo "RELEASE_VERSION=$release_version" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=pi-claude-v$release_version" >> "$GITHUB_ENV"
+
+      - name: Resolve tagged version
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#pi-claude-v}"
+          package_version="$(node -p "require('./packages/coding-agent/package.json').version")"
+          if [[ "$version" != "$package_version" ]]; then
+            echo "Tag version $version does not match package version $package_version." >&2
+            exit 1
+          fi
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+
+      - name: Refresh release metadata
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          node scripts/generate-coding-agent-shrinkwrap.mjs
+          node scripts/generate-coding-agent-install-lock.mjs
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build
+        run: npm run build:offline
+
+      - name: Test coding agent
+        run: npm test --workspace=@doubleflower/pi-claude
+
+      - name: Validate generated locks
+        run: |
+          npm run check:shrinkwrap
+          npm run check:install-lock:coding-agent
+
+      - name: Validate npm package contents
+        run: npm pack --dry-run --ignore-scripts --workspace=@doubleflower/pi-claude
+
+      - name: Commit and tag release
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "Release pi-claude v${RELEASE_VERSION}"
+          git tag "$RELEASE_TAG"
+          git push origin HEAD:main
+          git push origin "$RELEASE_TAG"
+
+      - name: Publish package
+        working-directory: packages/coding-agent
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        shell: bash
+        run: |
+          if npm view "@doubleflower/pi-claude@${RELEASE_VERSION}" version --json >/dev/null 2>&1; then
+            echo "@doubleflower/pi-claude@${RELEASE_VERSION} is already published; skipping."
+          else
+            npm publish --access public --provenance --ignore-scripts
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            echo "$RELEASE_TAG already has a GitHub release."
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --generate-notes --title "pi-claude v${RELEASE_VERSION}"
+          fi
