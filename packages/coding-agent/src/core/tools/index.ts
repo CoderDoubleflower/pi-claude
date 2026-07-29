@@ -113,17 +113,17 @@ function createBashDisplayToolDefinition(
 
 	return {
 		...definition,
-		renderCall(_args, activeTheme, context) {
+		renderCall(args, activeTheme, context) {
 			const state = context.state as typeof context.state & BashDisplayState;
 			const executionArgs = getToolExecutionArguments<BashToolInput>(context.toolCallId);
 			if (executionArgs !== undefined) {
 				state.canonicalExecutionArgs = executionArgs;
 			}
 
-			// Never render streamed command fragments. Before execution reaches the
-			// runtime, keep a stable placeholder; the first Bash output update then
-			// replaces it atomically with the exact arguments being executed.
-			const displayArgs: BashToolInput = state.canonicalExecutionArgs ?? { command: "" };
+			// Never render streamed command fragments while a Bash call is still
+			// running. Completed and restored calls use their persisted arguments.
+			const displayArgs: BashToolInput =
+				state.canonicalExecutionArgs ?? (context.isPartial ? { command: "" } : args);
 			return renderCall(displayArgs, activeTheme, context);
 		},
 	};
