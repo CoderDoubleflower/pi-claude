@@ -9,7 +9,7 @@ import {
 	DefaultResourceLoader,
 	getAgentDir,
 	SessionManager,
-} from "@earendil-works/pi-coding-agent";
+} from "@coderdoubleflower/pi-claude";
 
 const cwd = process.cwd();
 const agentDir = getAgentDir();

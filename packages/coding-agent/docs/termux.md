@@ -17,13 +17,13 @@ pkg update && pkg upgrade
 pkg install nodejs termux-api git
 
 # Install pi
-npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+npm install -g --ignore-scripts @coderdoubleflower/pi-claude
 
 # Create config directory
 mkdir -p ~/.pi/agent
 
 # Run pi
-pi
+pi-claude
 ```
 
 ## Clipboard Support

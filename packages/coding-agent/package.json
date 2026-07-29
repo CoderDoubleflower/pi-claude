@@ -1,13 +1,13 @@
 {
-	"name": "@earendil-works/pi-coding-agent",
+	"name": "@coderdoubleflower/pi-claude",
 	"version": "0.82.1",
-	"description": "Coding agent CLI with read, bash, edit, write tools and session management",
+	"description": "Claude Code-styled fork of Pi, a coding agent CLI with read, bash, edit, write tools and session management",
 	"type": "module",
 	"piConfig": {
 		"configDir": ".pi"
 	},
 	"bin": {
-		"pi": "dist/cli.js"
+		"pi-claude": "dist/cli.js"
 	},
 	"main": "./dist/index.js",
 	"types": "./dist/index.d.ts",
@@ -82,18 +82,30 @@
 	},
 	"keywords": [
 		"coding-agent",
+		"claude-code",
+		"pi",
 		"ai",
 		"llm",
 		"cli",
 		"tui",
 		"agent"
 	],
-	"author": "Mario Zechner",
+	"author": "CoderDoubleflower",
+	"contributors": [
+		"Mario Zechner and the earendil-works/pi contributors"
+	],
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/earendil-works/pi.git",
+		"url": "git+https://github.com/CoderDoubleflower/pi-claude.git",
 		"directory": "packages/coding-agent"
+	},
+	"bugs": {
+		"url": "https://github.com/CoderDoubleflower/pi-claude/issues"
+	},
+	"homepage": "https://github.com/CoderDoubleflower/pi-claude#readme",
+	"publishConfig": {
+		"access": "public"
 	},
 	"engines": {
 		"node": ">=22.19.0"
