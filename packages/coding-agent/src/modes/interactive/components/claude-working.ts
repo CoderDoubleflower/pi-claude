@@ -218,6 +218,6 @@ export function colorClaudeWorkingText(text: string): string {
 const spinnerCharacters = getClaudeSpinnerCharacters();
 
 export const CLAUDE_WORKING_INDICATOR: WorkingIndicatorOptions = {
-	frames: [...spinnerCharacters, ...[...spinnerCharacters].reverse()].map(colorClaude),
+	frames: [...spinnerCharacters, ...[...spinnerCharacters].reverse()].map((character) => colorClaude(character)),
 	intervalMs: CLAUDE_SPINNER_INTERVAL_MS,
 };
