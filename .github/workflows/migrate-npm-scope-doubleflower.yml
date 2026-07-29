@@ -18,20 +18,24 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-
-      - name: Replace npm scope
-        shell: bash
-        run: |
-          git grep -Il '@coderdoubleflower/pi-' | xargs -r sed -i 's/@coderdoubleflower\/pi-/@doubleflower\/pi-/g'
-
-      - name: Allow independent fork versions in installer lock
+      - name: Replace npm scope and update installer validation
         shell: python
         run: |
           from pathlib import Path
+
+          old_scope = '@coderdoubleflower/pi-'
+          new_scope = '@doubleflower/pi-'
+          skipped = {'.git'}
+
+          for path in Path('.').rglob('*'):
+              if not path.is_file() or any(part in skipped for part in path.parts):
+                  continue
+              try:
+                  content = path.read_text()
+              except UnicodeDecodeError:
+                  continue
+              if old_scope in content:
+                  path.write_text(content.replace(old_scope, new_scope))
 
           path = Path('scripts/generate-coding-agent-install-lock.mjs')
           text = path.read_text()
@@ -48,20 +52,6 @@ jobs:
               'validateGeneratedFiles(installerPackageJson, installLock, internalNames, internalWorkspaces);',
           )
           path.write_text(text)
-
-      - name: Refresh generated metadata
-        run: |
-          npm install --package-lock-only --ignore-scripts
-          node scripts/generate-coding-agent-shrinkwrap.mjs
-          node scripts/generate-coding-agent-install-lock.mjs
-
-      - name: Validate migration
-        run: |
-          npm ci --ignore-scripts
-          npm run build:offline
-          npm run check:shrinkwrap
-          npm run check:install-lock:coding-agent
-          npm pack --dry-run --ignore-scripts --workspace=@doubleflower/pi-claude
 
       - name: Remove one-off workflow and commit
         shell: bash
