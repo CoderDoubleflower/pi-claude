@@ -1,0 +1,124 @@
+name: Migrate npm package name
+
+on:
+  push:
+    branches:
+      - chore/npm-package-identity
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+
+      - name: Migrate package references
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          old = "@earendil-works/pi-coding-agent"
+          new = "@coderdoubleflower/pi-claude"
+          excluded = {
+              "packages/coding-agent/CHANGELOG.md",
+              "packages/coding-agent/src/cli/startup-ui.ts",
+              "packages/coding-agent/src/core/extensions/loader.ts",
+              "packages/coding-agent/src/modes/interactive/theme/theme.ts",
+              "package-lock.json",
+              "packages/coding-agent/npm-shrinkwrap.json",
+          }
+          excluded_prefixes = (
+              ".ai-bridge/",
+              ".github/workflows/",
+              "packages/coding-agent/install-lock/",
+          )
+
+          result = subprocess.run(
+              ["git", "grep", "-Il", "-F", old],
+              check=False,
+              capture_output=True,
+              text=True,
+          )
+          for raw_path in result.stdout.splitlines():
+              if raw_path in excluded or raw_path.startswith(excluded_prefixes):
+                  continue
+              path = Path(raw_path)
+              text = path.read_text()
+              updated = text.replace(old, new)
+              if updated != text:
+                  path.write_text(updated)
+
+          package_path = Path("packages/coding-agent/package.json")
+          package = json.loads(package_path.read_text())
+          package["version"] = "0.82.1"
+          package_path.write_text(json.dumps(package, indent="\t") + "\n")
+
+          loader_path = Path("packages/coding-agent/src/core/extensions/loader.ts")
+          loader = loader_path.read_text()
+          loader = loader.replace(
+              "// avoiding a circular dependency. Extensions can import from @earendil-works/pi-coding-agent.",
+              "// avoiding a circular dependency. Extensions can import from the fork package or the upstream compatibility aliases.",
+          )
+          loader = loader.replace(
+              '\t"@earendil-works/pi-coding-agent": _bundledPiCodingAgent,',
+              '\t"@coderdoubleflower/pi-claude": _bundledPiCodingAgent,\n\t"@earendil-works/pi-coding-agent": _bundledPiCodingAgent,',
+              1,
+          )
+          loader = loader.replace(
+              '\t\t"@earendil-works/pi-coding-agent": piCodingAgentEntry,',
+              '\t\t"@coderdoubleflower/pi-claude": piCodingAgentEntry,\n\t\t"@earendil-works/pi-coding-agent": piCodingAgentEntry,',
+              1,
+          )
+          loader_path.write_text(loader)
+
+          for script_name in [
+              "scripts/generate-coding-agent-shrinkwrap.mjs",
+              "scripts/generate-coding-agent-install-lock.mjs",
+          ]:
+              path = Path(script_name)
+              text = path.read_text()
+              text = text.replace(
+                  'const internalPackagePrefix = "@earendil-works/pi-";',
+                  'const internalPackagePrefixes = ["@earendil-works/pi-", "@coderdoubleflower/pi-"];\n'
+                  'const isInternalPackageName = (name) => internalPackagePrefixes.some((prefix) => name.startsWith(prefix));',
+              )
+              text = text.replace(
+                  "if (!entry.name.startsWith(internalPackagePrefix)) {",
+                  "if (!isInternalPackageName(entry.name)) {",
+              )
+              text = text.replace(
+                  "if (packageName?.startsWith(internalPackagePrefix) && entry.version !== installerPackageJson.version) {",
+                  "if (packageName && isInternalPackageName(packageName) && entry.version !== installerPackageJson.version) {",
+              )
+              path.write_text(text)
+          PY
+
+      - name: Regenerate npm lock metadata
+        run: |
+          npm install --package-lock-only --ignore-scripts
+          node scripts/generate-coding-agent-shrinkwrap.mjs
+          node scripts/generate-coding-agent-install-lock.mjs
+
+      - name: Commit migration and remove temporary files
+        run: |
+          rm -f .ai-bridge/npm-package-validation.md .ai-bridge/old-package-references.md
+          rm .github/workflows/migrate-npm-package-name.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor: migrate coding agent npm package name"
+          git push
