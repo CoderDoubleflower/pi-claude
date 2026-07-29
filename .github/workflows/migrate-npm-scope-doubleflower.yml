@@ -13,24 +13,20 @@ jobs:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           ref: chore/automated-npm-publishing
           fetch-depth: 0
 
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
-          node-version: '24'
-          package-manager-cache: false
+          node-version: '22.19.0'
+          cache: npm
 
       - name: Replace npm scope
         shell: bash
         run: |
-          git grep -Il '@coderdoubleflower/pi-' -- ':!package-lock.json' ':!packages/coding-agent/npm-shrinkwrap.json' ':!packages/coding-agent/install-lock/package-lock.json' | \
-            xargs -r sed -i 's/@coderdoubleflower\/pi-/@doubleflower\/pi-/g'
-          sed -i 's/@coderdoubleflower\/pi-/@doubleflower\/pi-/g' package-lock.json
-          sed -i 's/@coderdoubleflower\/pi-/@doubleflower\/pi-/g' packages/coding-agent/npm-shrinkwrap.json
-          sed -i 's/@coderdoubleflower\/pi-/@doubleflower\/pi-/g' packages/coding-agent/install-lock/package-lock.json
+          git grep -Il '@coderdoubleflower/pi-' | xargs -r sed -i 's/@coderdoubleflower\/pi-/@doubleflower\/pi-/g'
 
       - name: Refresh generated lock metadata
         run: |
