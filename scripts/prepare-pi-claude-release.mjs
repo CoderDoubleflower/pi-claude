@@ -18,6 +18,23 @@ function writeJson(path, data) {
 	writeFileSync(path, `${JSON.stringify(data, null, "\t")}\n`);
 }
 
+function parseVersion(version) {
+	const match = semverPattern.exec(version);
+	if (!match) {
+		throw new Error(`Version must use plain semver x.y.z; received: ${version}`);
+	}
+	return match.slice(1).map(Number);
+}
+
+function compareVersions(a, b) {
+	const left = parseVersion(a);
+	const right = parseVersion(b);
+	for (let index = 0; index < 3; index += 1) {
+		if (left[index] !== right[index]) return left[index] - right[index];
+	}
+	return 0;
+}
+
 function nextVersion(currentVersion, requestedTarget) {
 	if (semverPattern.test(requestedTarget)) {
 		return requestedTarget;
@@ -26,15 +43,7 @@ function nextVersion(currentVersion, requestedTarget) {
 		throw new Error(`Expected major, minor, patch, or x.y.z; received: ${requestedTarget}`);
 	}
 
-	const match = semverPattern.exec(currentVersion);
-	if (!match) {
-		throw new Error(`Current package version must be plain semver x.y.z; received: ${currentVersion}`);
-	}
-
-	let major = Number(match[1]);
-	let minor = Number(match[2]);
-	let patch = Number(match[3]);
-
+	let [major, minor, patch] = parseVersion(currentVersion);
 	if (requestedTarget === "major") {
 		major += 1;
 		minor = 0;
@@ -55,8 +64,8 @@ if (codingAgentPackage.name !== PACKAGE_NAME) {
 }
 
 const version = nextVersion(codingAgentPackage.version, target);
-if (version === codingAgentPackage.version) {
-	throw new Error(`Release version ${version} is already the current version.`);
+if (compareVersions(version, codingAgentPackage.version) <= 0) {
+	throw new Error(`Release version ${version} must be greater than ${codingAgentPackage.version}.`);
 }
 
 codingAgentPackage.version = version;
