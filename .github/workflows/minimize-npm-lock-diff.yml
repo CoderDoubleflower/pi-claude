@@ -1,0 +1,53 @@
+name: Minimize npm lockfile diff
+
+on:
+  push:
+    branches:
+      - chore/npm-package-identity
+
+permissions:
+  contents: write
+
+jobs:
+  minimize-lockfile:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore and patch root lockfile
+        run: |
+          git show origin/main:package-lock.json > package-lock.json
+          node <<'NODE'
+          const fs = require('node:fs');
+          const path = 'package-lock.json';
+          const lock = JSON.parse(fs.readFileSync(path, 'utf8'));
+          const oldKey = 'node_modules/@earendil-works/pi-coding-agent';
+          const newKey = 'node_modules/@coderdoubleflower/pi-claude';
+          const packages = {};
+          for (const [key, value] of Object.entries(lock.packages)) {
+            packages[key === oldKey ? newKey : key] = value;
+          }
+          lock.packages = packages;
+          const codingAgent = lock.packages['packages/coding-agent'];
+          if (!codingAgent) throw new Error('packages/coding-agent lock entry is missing');
+          codingAgent.name = '@coderdoubleflower/pi-claude';
+          codingAgent.version = '0.82.1-claude.1';
+          codingAgent.bin = { 'pi-claude': 'dist/cli.js' };
+          fs.writeFileSync(path, `${JSON.stringify(lock, null, '\t')}\n`);
+          NODE
+
+      - name: Regenerate coding-agent shrinkwrap
+        run: node scripts/generate-coding-agent-shrinkwrap.mjs
+
+      - name: Commit minimal lock changes and remove workflow
+        run: |
+          rm .github/workflows/minimize-npm-lock-diff.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json packages/coding-agent/npm-shrinkwrap.json .github/workflows/minimize-npm-lock-diff.yml
+          git commit -m "chore(coding-agent): minimize npm lock metadata changes"
+          git push
