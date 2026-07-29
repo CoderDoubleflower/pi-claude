@@ -3,8 +3,13 @@ name: Publish pi-claude to npm
 on:
   workflow_dispatch:
     inputs:
+      retry_current:
+        description: Publish the current package version without incrementing it (use after a failed publish)
+        required: true
+        default: false
+        type: boolean
       bump:
-        description: Version increment when an exact version is not supplied
+        description: Version increment when retry_current is false and an exact version is not supplied
         required: true
         default: patch
         type: choice
@@ -40,7 +45,7 @@ jobs:
         with:
           node-version: '24'
           registry-url: https://registry.npmjs.org
-          cache: npm
+          package-manager-cache: false
 
       - name: Ensure trusted-publishing compatible npm
         run: npm install --global npm@latest
@@ -53,12 +58,19 @@ jobs:
             echo "Run this workflow from the main branch." >&2
             exit 1
           fi
-          target='${{ inputs.version }}'
-          if [[ -z "$target" ]]; then
-            target='${{ inputs.bump }}'
+
+          if [[ '${{ inputs.retry_current }}' == 'true' ]]; then
+            release_version="$(node -p "require('./packages/coding-agent/package.json').version")"
+            echo "Retrying current package version: $release_version"
+          else
+            target='${{ inputs.version }}'
+            if [[ -z "$target" ]]; then
+              target='${{ inputs.bump }}'
+            fi
+            node scripts/prepare-pi-claude-release.mjs "$target"
+            release_version="$(node -p "require('./packages/coding-agent/package.json').version")"
           fi
-          node scripts/prepare-pi-claude-release.mjs "$target"
-          release_version="$(node -p "require('./packages/coding-agent/package.json').version")"
+
           echo "RELEASE_VERSION=$release_version" >> "$GITHUB_ENV"
           echo "RELEASE_TAG=pi-claude-v$release_version" >> "$GITHUB_ENV"
 
@@ -111,28 +123,90 @@ jobs:
       - name: Validate npm package contents
         run: npm pack --dry-run --ignore-scripts --workspace=@doubleflower/pi-claude
 
-      - name: Commit and tag release
+      - name: Check npm registry state
+        id: registry
+        shell: bash
+        run: |
+          if npm view '@doubleflower/pi-claude' name --json >/dev/null 2>&1; then
+            echo 'package_exists=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'package_exists=false' >> "$GITHUB_OUTPUT"
+          fi
+
+          if npm view "@doubleflower/pi-claude@${RELEASE_VERSION}" version --json >/dev/null 2>&1; then
+            echo 'version_exists=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'version_exists=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Commit prepared release
         if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A
-          git commit -m "Release pi-claude v${RELEASE_VERSION}"
-          git tag "$RELEASE_TAG"
-          git push origin HEAD:main
-          git push origin "$RELEASE_TAG"
+          if ! git diff --quiet --exit-code; then
+            git add -A
+            git commit -m "Release pi-claude v${RELEASE_VERSION}"
+            git push origin HEAD:main
+          else
+            echo "No release metadata changes to commit."
+          fi
 
-      - name: Publish package
+      - name: Publish first package version with npm token
+        if: steps.registry.outputs.package_exists == 'false' && steps.registry.outputs.version_exists == 'false'
         working-directory: packages/coding-agent
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         shell: bash
         run: |
-          if npm view "@doubleflower/pi-claude@${RELEASE_VERSION}" version --json >/dev/null 2>&1; then
-            echo "@doubleflower/pi-claude@${RELEASE_VERSION} is already published; skipping."
+          if [[ -z "$NODE_AUTH_TOKEN" ]]; then
+            echo '::error::NPM_TOKEN is missing. The first publication requires a granular npm token with read/write access and Bypass 2FA enabled.'
+            exit 1
+          fi
+
+          set +e
+          output="$(npm publish --access public --provenance --ignore-scripts 2>&1)"
+          status=$?
+          set -e
+          printf '%s\n' "$output"
+
+          if [[ $status -ne 0 ]]; then
+            if grep -q 'EOTP\|one-time password' <<<"$output"; then
+              echo '::error::NPM_TOKEN does not bypass 2FA. Create a granular npm token with read/write access and the “Bypass two-factor authentication” option enabled, then replace the NPM_TOKEN repository secret.'
+            fi
+            exit "$status"
+          fi
+
+      - name: Publish existing package with npm trusted publishing
+        if: steps.registry.outputs.package_exists == 'true' && steps.registry.outputs.version_exists == 'false'
+        working-directory: packages/coding-agent
+        run: npm publish --access public --ignore-scripts
+
+      - name: Skip already published version
+        if: steps.registry.outputs.version_exists == 'true'
+        run: echo "@doubleflower/pi-claude@${RELEASE_VERSION} is already published; skipping npm publish."
+
+      - name: Create or repair release tag
+        shell: bash
+        env:
+          VERSION_WAS_ALREADY_PUBLISHED: ${{ steps.registry.outputs.version_exists }}
+        run: |
+          git fetch --tags --force
+          current_sha="$(git rev-parse HEAD)"
+
+          if git rev-parse -q --verify "refs/tags/$RELEASE_TAG" >/dev/null; then
+            tag_sha="$(git rev-list -n 1 "$RELEASE_TAG")"
+            if [[ "$VERSION_WAS_ALREADY_PUBLISHED" == 'false' && "$tag_sha" != "$current_sha" ]]; then
+              echo "Moving failed-release tag $RELEASE_TAG from $tag_sha to $current_sha."
+              git tag --force "$RELEASE_TAG" "$current_sha"
+              git push --force origin "refs/tags/$RELEASE_TAG"
+            else
+              echo "$RELEASE_TAG already exists at $tag_sha."
+            fi
           else
-            npm publish --access public --provenance --ignore-scripts
+            git tag "$RELEASE_TAG" "$current_sha"
+            git push origin "refs/tags/$RELEASE_TAG"
           fi
 
       - name: Create GitHub release
