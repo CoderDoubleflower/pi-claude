@@ -53,6 +53,10 @@ jobs:
         if: steps.patch.outputs.run == 'true'
         run: node .github/scripts/apply-claude-status-fix.mjs
 
+      - name: Complete focused test fixture
+        if: steps.patch.outputs.run == 'true'
+        run: node .github/scripts/fix-claude-status-test.mjs
+
       - name: Format changed files
         if: steps.patch.outputs.run == 'true'
         run: >-
