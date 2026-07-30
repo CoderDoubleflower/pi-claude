@@ -8,10 +8,11 @@ import { ModelConfig } from "../src/core/model-config.ts";
 import {
 	applyRemoteHistoryPayloadPatch,
 	buildRemoteCompactionRequestBody,
+	getRemoteCompactionConfig,
 	reconstructRemoteCompactionStateFromBranch,
-	supportsRemoteCompaction,
+	supportsRemoteCompactionProtocol,
 	type ResponseItem,
-} from "../src/core/remote-compaction.ts";
+} from "../src/core/remote-compaction/index.ts";
 
 const tempDirs: string[] = [];
 
@@ -31,7 +32,9 @@ function createModel(overrides: Partial<Model<Api>> = {}): Model<Api> {
 		cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0 },
 		contextWindow: 128_000,
 		maxTokens: 16_384,
-		compat: { supportsRemoteCompaction: true } as Model<Api>["compat"],
+		compat: {
+			remoteCompaction: { enabled: true, model: "gpt-compact" },
+		} as Model<Api>["compat"],
 		...overrides,
 	};
 }
@@ -65,7 +68,7 @@ function assistantMessage(text: string, provider = "test-openai", model = "gpt-t
 }
 
 describe("remote compaction", () => {
-	it("loads the provider compatibility switch from models.json", async () => {
+	it("loads the provider switch and compaction model from models.json", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "pi-remote-compaction-"));
 		tempDirs.push(dir);
 		const path = join(dir, "models.json");
@@ -76,8 +79,8 @@ describe("remote compaction", () => {
 					proxy: {
 						baseUrl: "https://example.com/v1",
 						api: "openai-responses",
-						compat: { supportsRemoteCompaction: true },
-						models: [{ id: "gpt-test" }],
+						remoteCompaction: { enabled: true, model: "gpt-compact" },
+						models: [{ id: "gpt-test" }, { id: "gpt-compact" }],
 					},
 				},
 			}),
@@ -85,17 +88,18 @@ describe("remote compaction", () => {
 
 		const config = await ModelConfig.load(path);
 		expect(config.getError()).toBeUndefined();
-		expect((config.getProvider("proxy")?.compat as Record<string, unknown>).supportsRemoteCompaction).toBe(true);
+		expect(config.getProvider("proxy")?.remoteCompaction).toEqual({
+			enabled: true,
+			model: "gpt-compact",
+		});
+		const compat = config.getProvider("proxy")?.compat as Record<string, unknown>;
+		expect(compat.remoteCompaction).toEqual({ enabled: true, model: "gpt-compact" });
 	});
 
-	it("requires an enabled OpenAI Responses model", () => {
-		expect(supportsRemoteCompaction(createModel())).toBe(true);
-		expect(
-			supportsRemoteCompaction(
-				createModel({ compat: { supportsRemoteCompaction: false } as Model<Api>["compat"] }),
-			),
-		).toBe(false);
-		expect(supportsRemoteCompaction(createModel({ api: "openai-completions" }))).toBe(false);
+	it("resolves the projected provider configuration and validates the API", () => {
+		expect(getRemoteCompactionConfig(createModel())).toEqual({ enabled: true, model: "gpt-compact" });
+		expect(supportsRemoteCompactionProtocol(createModel())).toBe(true);
+		expect(supportsRemoteCompactionProtocol(createModel({ api: "openai-completions" }))).toBe(false);
 	});
 
 	it("appends a compaction trigger without enabling server storage", () => {
@@ -138,6 +142,7 @@ describe("remote compaction", () => {
 							provider: "openai-responses-compaction",
 							implementation: "responses_compaction_v2",
 							modelKey: "test-openai:openai-responses:gpt-test",
+							compactionModelKey: "test-openai:openai-responses:gpt-compact",
 							replacementHistory,
 						},
 					},
