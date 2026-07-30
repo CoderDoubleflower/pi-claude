@@ -4,8 +4,8 @@
  * Shows how to select a specific model and thinking level.
  */
 
-import { createAgentSession, ModelRuntime } from "@doubleflower/pi-claude";
 import { getModel } from "@earendil-works/pi-ai/compat";
+import { createAgentSession, ModelRuntime } from "@doubleflower/pi-claude";
 
 const modelRuntime = await ModelRuntime.create();
 

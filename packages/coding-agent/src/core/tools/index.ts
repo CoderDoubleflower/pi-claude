@@ -70,7 +70,12 @@ export {
 
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { ToolDefinition } from "../extensions/types.ts";
-import { type BashToolInput, type BashToolOptions, createBashTool, createBashToolDefinition } from "./bash.ts";
+import {
+	type BashToolInput,
+	type BashToolOptions,
+	createBashTool,
+	createBashToolDefinition,
+} from "./bash.ts";
 import { createEditTool, createEditToolDefinition, type EditToolOptions } from "./edit.ts";
 import { getToolExecutionArguments } from "./execution-arguments.ts";
 import { createFindTool, createFindToolDefinition, type FindToolOptions } from "./find.ts";

@@ -20,6 +20,7 @@
  */
 
 import path from "node:path";
+import { RealFSProvider, VM } from "@earendil-works/gondolin";
 import type { ExtensionAPI, ExtensionContext } from "@doubleflower/pi-claude";
 import {
 	type BashOperations,
@@ -42,7 +43,6 @@ import {
 	truncateLine,
 	type WriteOperations,
 } from "@doubleflower/pi-claude";
-import { RealFSProvider, VM } from "@earendil-works/gondolin";
 
 const GUEST_WORKSPACE = "/workspace";
 const DEFAULT_GREP_LIMIT = 100;
