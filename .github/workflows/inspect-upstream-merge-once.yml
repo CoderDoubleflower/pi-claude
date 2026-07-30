@@ -70,95 +70,101 @@ jobs:
               .pi/extensions/prompt-url-widget.ts \
               packages/coding-agent/CHANGELOG.md \
               packages/coding-agent/README.md
+          fi
 
-            node <<'NODE'
-            const fs = require('node:fs');
+          node <<'NODE'
+          const fs = require('node:fs');
 
-            function replaceOnce(text, before, after, label) {
-              const index = text.indexOf(before);
-              if (index < 0) throw new Error(`Missing ${label}`);
-              if (text.indexOf(before, index + before.length) >= 0) throw new Error(`Multiple matches for ${label}`);
-              return `${text.slice(0, index)}${after}${text.slice(index + before.length)}`;
-            }
+          function replaceOnce(text, before, after, label) {
+            const index = text.indexOf(before);
+            if (index < 0) throw new Error(`Missing ${label}`);
+            if (text.indexOf(before, index + before.length) >= 0) throw new Error(`Multiple matches for ${label}`);
+            return `${text.slice(0, index)}${after}${text.slice(index + before.length)}`;
+          }
 
-            const widgetPath = '.pi/extensions/prompt-url-widget.ts';
-            let widget = fs.readFileSync(widgetPath, 'utf8');
+          const widgetPath = '.pi/extensions/prompt-url-widget.ts';
+          let widget = fs.readFileSync(widgetPath, 'utf8');
+          if (!widget.includes('import { Container, hyperlink, Text } from "@earendil-works/pi-tui";')) {
             widget = replaceOnce(
               widget,
               'import { Container, Text } from "@earendil-works/pi-tui";',
               'import { Container, hyperlink, Text } from "@earendil-works/pi-tui";',
               'prompt widget TUI import',
             );
+          }
+          if (!widget.includes(': hyperlink(thm.fg("accent", displayTarget), displayTarget);')) {
             widget = replaceOnce(
               widget,
               ': thm.fg("accent", displayTarget);',
               ': hyperlink(thm.fg("accent", displayTarget), displayTarget);',
               'prompt widget title hyperlink',
             );
+          }
+          if (!widget.includes('const urlLine = hyperlink(thm.fg("dim", displayTarget), displayTarget);')) {
             widget = replaceOnce(
               widget,
               'const urlLine = thm.fg("dim", displayTarget);',
               'const urlLine = hyperlink(thm.fg("dim", displayTarget), displayTarget);',
               'prompt widget URL hyperlink',
             );
-            fs.writeFileSync(widgetPath, widget);
+          }
+          fs.writeFileSync(widgetPath, widget);
 
-            function addUnreleasedBullet(markdown, heading, bullet) {
-              if (markdown.includes(bullet)) return markdown;
-              const unreleasedStart = markdown.indexOf('## [Unreleased]');
-              const nextRelease = markdown.indexOf('\n## [', unreleasedStart + 1);
-              if (unreleasedStart < 0 || nextRelease < 0) throw new Error('Unable to locate Unreleased changelog section');
+          function addUnreleasedBullet(markdown, heading, bullet) {
+            if (markdown.includes(bullet)) return markdown;
+            const unreleasedStart = markdown.indexOf('## [Unreleased]');
+            const nextRelease = markdown.indexOf('\n## [', unreleasedStart + 1);
+            if (unreleasedStart < 0 || nextRelease < 0) throw new Error('Unable to locate Unreleased changelog section');
 
-              const prefix = markdown.slice(0, unreleasedStart);
-              let section = markdown.slice(unreleasedStart, nextRelease);
-              const suffix = markdown.slice(nextRelease);
-              const headingText = `### ${heading}`;
-              const headingIndex = section.indexOf(headingText);
+            const prefix = markdown.slice(0, unreleasedStart);
+            let section = markdown.slice(unreleasedStart, nextRelease);
+            const suffix = markdown.slice(nextRelease);
+            const headingText = `### ${heading}`;
+            const headingIndex = section.indexOf(headingText);
 
-              if (headingIndex < 0) {
-                section = `${section.trimEnd()}\n\n${headingText}\n\n${bullet}\n`;
-              } else {
-                const contentStart = headingIndex + headingText.length;
-                const nextHeading = section.indexOf('\n### ', contentStart);
-                const insertAt = nextHeading < 0 ? section.length : nextHeading;
-                section = `${section.slice(0, insertAt).trimEnd()}\n${bullet}\n\n${section.slice(insertAt).replace(/^\n+/, '')}`;
-              }
-              return `${prefix}${section}${suffix}`;
+            if (headingIndex < 0) {
+              section = `${section.trimEnd()}\n\n${headingText}\n\n${bullet}\n`;
+            } else {
+              const contentStart = headingIndex + headingText.length;
+              const nextHeading = section.indexOf('\n### ', contentStart);
+              const insertAt = nextHeading < 0 ? section.length : nextHeading;
+              section = `${section.slice(0, insertAt).trimEnd()}\n${bullet}\n\n${section.slice(insertAt).replace(/^\n+/, '')}`;
             }
+            return `${prefix}${section}${suffix}`;
+          }
 
-            const changelogPath = 'packages/coding-agent/CHANGELOG.md';
-            let changelog = fs.readFileSync(changelogPath, 'utf8');
-            changelog = addUnreleasedBullet(
-              changelog,
-              'Added',
-              '- Added `--alt` to run interactive mode with the alternate-screen TUI ([#7304](https://github.com/earendil-works/pi/issues/7304)).',
+          const changelogPath = 'packages/coding-agent/CHANGELOG.md';
+          let changelog = fs.readFileSync(changelogPath, 'utf8');
+          changelog = addUnreleasedBullet(
+            changelog,
+            'Added',
+            '- Added `--alt` to run interactive mode with the alternate-screen TUI ([#7304](https://github.com/earendil-works/pi/issues/7304)).',
+          );
+          changelog = addUnreleasedBullet(
+            changelog,
+            'Fixed',
+            '- Fixed `setToolsExpanded(false)` to be a no-op when tool output is already collapsed, avoiding redundant `Tool output: collapsed` startup notices from extensions ([#7292](https://github.com/earendil-works/pi/issues/7292)).',
+          );
+          fs.writeFileSync(changelogPath, changelog);
+
+          const readmePath = 'packages/coding-agent/README.md';
+          let readme = fs.readFileSync(readmePath, 'utf8');
+          const altBullet = '- Optional alternate-screen TUI with application-owned scrolling via `pi-claude --alt`';
+          if (!readme.includes(altBullet)) {
+            readme = replaceOnce(
+              readme,
+              '- Streaming interactive terminal UI\n',
+              `- Streaming interactive terminal UI\n${altBullet}\n`,
+              'README core capability insertion point',
             );
-            changelog = addUnreleasedBullet(
-              changelog,
-              'Fixed',
-              '- Fixed `setToolsExpanded(false)` to be a no-op when tool output is already collapsed, avoiding redundant `Tool output: collapsed` startup notices from extensions ([#7292](https://github.com/earendil-works/pi/issues/7292)).',
-            );
-            fs.writeFileSync(changelogPath, changelog);
+          }
+          fs.writeFileSync(readmePath, readme);
+          NODE
 
-            const readmePath = 'packages/coding-agent/README.md';
-            let readme = fs.readFileSync(readmePath, 'utf8');
-            const altBullet = '- Optional alternate-screen TUI with application-owned scrolling via `pi-claude --alt`';
-            if (!readme.includes(altBullet)) {
-              readme = replaceOnce(
-                readme,
-                '- Streaming interactive terminal UI\n',
-                `- Streaming interactive terminal UI\n${altBullet}\n`,
-                'README core capability insertion point',
-              );
-            }
-            fs.writeFileSync(readmePath, readme);
-            NODE
-
-            git add \
-              .pi/extensions/prompt-url-widget.ts \
-              packages/coding-agent/CHANGELOG.md \
-              packages/coding-agent/README.md
-          fi
+          git add \
+            .pi/extensions/prompt-url-widget.ts \
+            packages/coding-agent/CHANGELOG.md \
+            packages/coding-agent/README.md
 
           if git diff --name-only --diff-filter=U | grep -q .; then
             echo "Unresolved merge conflicts remain" >&2
