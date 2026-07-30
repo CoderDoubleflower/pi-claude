@@ -110,6 +110,10 @@ const TOOL_CALL_PREVIEW_MAX_WIDTH = 120;
 class CompactToolCallComponent implements Component {
 	constructor(private readonly component: Component) {}
 
+	getInnerComponent(): Component {
+		return this.component;
+	}
+
 	render(width: number): string[] {
 		const contentLines = this.component
 			.render(width)
@@ -137,7 +141,11 @@ function withCompactCallDisplay<T extends ToolDef>(definition: T): T {
 	return {
 		...definition,
 		renderCall(args, activeTheme, context) {
-			const component = renderCall(args, activeTheme, context);
+			const lastComponent =
+				context.lastComponent instanceof CompactToolCallComponent
+					? context.lastComponent.getInnerComponent()
+					: context.lastComponent;
+			const component = renderCall(args, activeTheme, { ...context, lastComponent });
 			if (!context.executionStarted || context.expanded) return component;
 			return new CompactToolCallComponent(component);
 		},
