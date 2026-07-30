@@ -1,0 +1,39 @@
+name: Inspect upstream merge conflicts
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/inspect-upstream-merge-once.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    if: github.event.head_commit.message == 'chore: inspect latest upstream merge conflicts'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Attempt unbiased merge and report conflicts
+        shell: bash
+        run: |
+          set -uo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/earendil-works/pi.git
+          git fetch --no-tags upstream main
+          set +e
+          git merge --no-commit --no-ff upstream/main
+          status=$?
+          set -e
+          if [[ $status -ne 0 ]]; then
+            echo "::group::Conflicting files"
+            git diff --name-only --diff-filter=U
+            echo "::endgroup::"
+            exit 1
+          fi
+          echo "Merge applies without textual conflicts."
