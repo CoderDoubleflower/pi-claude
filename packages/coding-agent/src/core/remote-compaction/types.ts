@@ -85,6 +85,8 @@ export type BranchEntry = {
 	details?: unknown;
 	message?: AgentMessage;
 	thinkingLevel?: unknown;
+	customType?: unknown;
+	data?: unknown;
 };
 
 export type SessionContextLike = {
