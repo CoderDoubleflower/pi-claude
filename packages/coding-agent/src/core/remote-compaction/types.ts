@@ -57,6 +57,7 @@ export type RemoteCompactionDetails = {
 	provider: "openai-responses-compaction";
 	implementation: "responses_compaction_v2";
 	modelKey: string;
+	compactionModelKey: string;
 	replacementHistory: ResponseItem[];
 	usage?: Usage;
 };
@@ -100,11 +101,8 @@ export function modelKey(model: Model<Api>): string {
 	return `${model.provider}:${model.api}:${model.id}`;
 }
 
-export function supportsRemoteCompaction(model: Model<Api> | undefined): model is Model<Api> {
-	if (!model) return false;
-	const compat: unknown = model.compat;
-	if (!isRecord(compat) || compat.supportsRemoteCompaction !== true) return false;
-	return model.api === "openai-responses" || model.api === "openai-codex-responses";
+export function supportsRemoteCompactionProtocol(model: Model<Api> | undefined): model is Model<Api> {
+	return model?.api === "openai-responses" || model?.api === "openai-codex-responses";
 }
 
 export function isCodexResponsesModel(model: Model<Api>): boolean {
