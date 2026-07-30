@@ -3,7 +3,7 @@ name: One-off pi-claude command branding fix
 on:
   push:
     branches:
-      - fix/pi-claude-command-branding
+      - main
 
 permissions:
   contents: write
@@ -12,10 +12,10 @@ jobs:
   fix-branding:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out branch
+      - name: Check out main
         uses: actions/checkout@v4
         with:
-          ref: fix/pi-claude-command-branding
+          ref: main
           fetch-depth: 0
 
       - name: Set up Node.js
@@ -188,4 +188,4 @@ jobs:
             packages/coding-agent/test/package-command-paths.test.ts \
             packages/coding-agent/test/command-branding.test.ts
           git commit -m "fix(coding-agent): use pi-claude in command prompts"
-          git push origin HEAD:fix/pi-claude-command-branding
+          git push origin HEAD:main
