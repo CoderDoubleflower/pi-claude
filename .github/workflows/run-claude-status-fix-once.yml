@@ -6,6 +6,7 @@ on:
       - main
     types:
       - opened
+      - synchronize
 
 permissions:
   contents: write
@@ -21,18 +22,32 @@ jobs:
           ref: fix/claude-completion-status
           fetch-depth: 0
 
+      - name: Check whether patch is still pending
+        id: patch
+        shell: bash
+        run: |
+          if [[ -f .github/scripts/apply-claude-status-fix.mjs ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-node@v6
+        if: steps.patch.outputs.run == 'true'
         with:
           node-version: '24'
           package-manager-cache: false
 
       - name: Install dependencies
+        if: steps.patch.outputs.run == 'true'
         run: npm ci
 
       - name: Apply exact source patch
+        if: steps.patch.outputs.run == 'true'
         run: node .github/scripts/apply-claude-status-fix.mjs
 
       - name: Format and lint changed files
+        if: steps.patch.outputs.run == 'true'
         run: >-
           npx biome check --write --error-on-warnings
           packages/coding-agent/src/modes/interactive/components/claude-working.ts
@@ -42,12 +57,15 @@ jobs:
           packages/coding-agent/test/claude-status.test.ts
 
       - name: Typecheck
+        if: steps.patch.outputs.run == 'true'
         run: npx tsgo --noEmit
 
       - name: Run focused tests
+        if: steps.patch.outputs.run == 'true'
         run: npx vitest --run packages/coding-agent/test/claude-status.test.ts
 
       - name: Commit verified changes
+        if: steps.patch.outputs.run == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
