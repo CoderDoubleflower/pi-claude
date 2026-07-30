@@ -1,4 +1,4 @@
-import type { AgentMessage } from "@earendil-works/pi-agent-core";
+import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
 import { compact, type CompactionResult } from "../compaction/index.ts";
 import type { ExtensionAPI } from "../extensions/index.ts";
@@ -20,6 +20,7 @@ import {
 	looksLikeResponsesPayload,
 	thinkingLevelToResponsesReasoning,
 } from "./openai.ts";
+import { stripImagesFromRemoteHistory } from "./sanitize.ts";
 import {
 	clearAllRemoteCompactionState,
 	clearRemoteCompactionState,
@@ -68,6 +69,10 @@ function extendRemoteHistoryIfCompatible(params: {
 }): void {
 	const state = getMatchingRemoteState(params.sessionId, params.model);
 	if (!state || !params.model) return;
+	if (params.message.role === "assistant" && params.message.stopReason === "error") {
+		clearRemoteCompactionState(params.sessionId);
+		return;
+	}
 	if (
 		params.message.role === "assistant" &&
 		(params.message.provider !== params.model.provider || params.message.model !== params.model.id)
@@ -172,7 +177,9 @@ export default function remoteCompactionExtension(pi: ExtensionAPI): void {
 			compactionModel,
 		);
 		const observedShape = getResponsesRequestShapeState(sessionId);
-		const thinkingLevel = pi.getThinkingLevel() ?? getBranchThinkingLevel(branchEntries);
+		const thinkingLevel = (pi.getThinkingLevel() ?? getBranchThinkingLevel(branchEntries)) as
+			| ThinkingLevel
+			| undefined;
 		const reasoning =
 			observedShape?.reasoning ??
 			(compactionModel.reasoning ? thinkingLevelToResponsesReasoning(thinkingLevel) : undefined);
@@ -216,7 +223,11 @@ export default function remoteCompactionExtension(pi: ExtensionAPI): void {
 		}
 
 		const remoteDetails = {
-			...buildRemoteCompactionDetails(activeModel, remoteResult.value.output, remoteResult.value.usage),
+			...buildRemoteCompactionDetails(
+				activeModel,
+				stripImagesFromRemoteHistory(remoteResult.value.output),
+				remoteResult.value.usage,
+			),
 			compactionModelKey: modelKey(compactionModel),
 		};
 		const localCompaction: CompactionResult =
@@ -269,5 +280,18 @@ export default function remoteCompactionExtension(pi: ExtensionAPI): void {
 			payload: event.payload,
 			explicitHistory: normalizeResponseItemsForPrompt(state.explicitHistory, model),
 		});
+	});
+
+	pi.on("after_provider_response", (event, ctx) => {
+		if (event.status < 400) return;
+		const sessionId = getSessionId(ctx);
+		if (!getMatchingRemoteState(sessionId, ctx.model)) return;
+		clearRemoteCompactionState(sessionId);
+		if (ctx.hasUI) {
+			ctx.ui.notify(
+				"The provider rejected remote compaction history; retrying with the portable local summary.",
+				"warning",
+			);
+		}
 	});
 }
