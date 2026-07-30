@@ -108,7 +108,11 @@ type BashDisplayState = {
 const TOOL_CALL_PREVIEW_MAX_WIDTH = 120;
 
 class CompactToolCallComponent implements Component {
-	constructor(private readonly component: Component) {}
+	private readonly component: Component;
+
+	constructor(component: Component) {
+		this.component = component;
+	}
 
 	getInnerComponent(): Component {
 		return this.component;
