@@ -52,6 +52,11 @@ export type ResponsesReasoningConfig = {
 
 export type ResponsesTextConfig = Record<string, unknown>;
 
+export type RemoteCompactionConfig = {
+	enabled: boolean;
+	model?: string;
+};
+
 export type RemoteCompactionDetails = {
 	version: 2;
 	provider: "openai-responses-compaction";
@@ -99,6 +104,20 @@ export function cloneResponseItem(item: ResponseItem): ResponseItem {
 
 export function modelKey(model: Model<Api>): string {
 	return `${model.provider}:${model.api}:${model.id}`;
+}
+
+export function getRemoteCompactionConfig(model: Model<Api> | undefined): RemoteCompactionConfig | undefined {
+	if (!model || !isRecord(model.compat) || !isRecord(model.compat.remoteCompaction)) return undefined;
+	const remoteCompaction = model.compat.remoteCompaction;
+	if (typeof remoteCompaction.enabled !== "boolean") return undefined;
+	const configuredModel =
+		typeof remoteCompaction.model === "string" && remoteCompaction.model.trim()
+			? remoteCompaction.model.trim()
+			: undefined;
+	return {
+		enabled: remoteCompaction.enabled,
+		...(configuredModel ? { model: configuredModel } : {}),
+	};
 }
 
 export function supportsRemoteCompactionProtocol(model: Model<Api> | undefined): model is Model<Api> {
