@@ -25,9 +25,7 @@ function createRenderContext(toolCallId: string, overrides: Record<string, unkno
 }
 
 function renderLines(component: { render(width: number): string[] } | undefined, width = 240): string[] {
-	return (component?.render(width) ?? [])
-		.map((line) => stripAnsi(line))
-		.filter((line) => line.trim().length > 0);
+	return (component?.render(width) ?? []).map((line) => stripAnsi(line)).filter((line) => line.trim().length > 0);
 }
 
 describe("Bash command rendering", () => {

@@ -5198,7 +5198,11 @@ export class InteractiveMode {
 			providerOption.name,
 			`${providerOption.name} setup`,
 		);
-		dialog.showInfo(`${providerOption.method?.name ?? "Authentication"} is configured outside ${APP_NAME}.`, [], true);
+		dialog.showInfo(
+			`${providerOption.method?.name ?? "Authentication"} is configured outside ${APP_NAME}.`,
+			[],
+			true,
+		);
 
 		this.editorContainer.clear();
 		this.editorContainer.addChild(dialog);

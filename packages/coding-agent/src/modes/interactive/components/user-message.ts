@@ -40,9 +40,7 @@ export class UserMessageComponent extends Container {
 			},
 			{ preserveOrderedListMarkers: true, preserveBackslashEscapes: true },
 		);
-		contentBox.addChild(
-			new MessageMarkerComponent(markdown, theme.fg("userMessageText", "❯"), this.outputPad),
-		);
+		contentBox.addChild(new MessageMarkerComponent(markdown, theme.fg("userMessageText", "❯"), this.outputPad));
 		this.addChild(contentBox);
 	}
 

@@ -1,14 +1,14 @@
 import type { AgentMessage, ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Api, Model } from "@earendil-works/pi-ai";
-import { compact, type CompactionResult } from "../compaction/index.ts";
+import { type CompactionResult, compact } from "../compaction/index.ts";
 import type { ExtensionAPI } from "../extensions/index.ts";
 import {
 	buildRemoteCompactionDetails,
 	buildToolsPayload,
 	getBranchMessages,
 	getBranchThinkingLevel,
-	messageToResponseItems,
 	messagesToResponseItems,
+	messageToResponseItems,
 	normalizeResponseItemsForPrompt,
 	reconstructRemoteCompactionStateFromBranch,
 } from "./history.ts";
@@ -31,13 +31,13 @@ import {
 	setResponsesRequestShapeState,
 } from "./state.ts";
 import {
+	type BranchEntry,
 	getRemoteCompactionConfig,
 	isRecord,
 	modelKey,
-	supportsRemoteCompactionProtocol,
-	type BranchEntry,
 	type RemoteCompactionSessionState,
 	type SessionContextLike,
+	supportsRemoteCompactionProtocol,
 } from "./types.ts";
 
 const REJECTED_REMOTE_COMPACTION_ENTRY = "pi-claude.remote-compaction-rejected";
@@ -150,10 +150,8 @@ export default function remoteCompactionExtension(pi: ExtensionAPI): void {
 		const config = getRemoteCompactionConfig(activeModel);
 		if (!activeModel || !config?.enabled || !supportsRemoteCompactionProtocol(activeModel)) return undefined;
 
-		const compactionModel = resolveCompactionModel(
-			activeModel,
-			config.model,
-			(provider, modelId) => ctx.modelRegistry.find(provider, modelId),
+		const compactionModel = resolveCompactionModel(activeModel, config.model, (provider, modelId) =>
+			ctx.modelRegistry.find(provider, modelId),
 		);
 		if (!compactionModel) {
 			if (ctx.hasUI) {
@@ -261,9 +259,7 @@ export default function remoteCompactionExtension(pi: ExtensionAPI): void {
 				estimatedTokensAfter: localCompaction.estimatedTokensAfter,
 				usage: localCompaction.usage,
 				details: {
-					...(localCompaction.details !== undefined
-						? { localSummaryDetails: localCompaction.details }
-						: {}),
+					...(localCompaction.details !== undefined ? { localSummaryDetails: localCompaction.details } : {}),
 					remoteCompaction: remoteDetails,
 				},
 			},

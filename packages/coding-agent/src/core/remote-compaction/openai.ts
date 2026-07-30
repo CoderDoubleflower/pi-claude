@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { arch, homedir, platform, release } from "node:os";
 import { dirname, join } from "node:path";
-import { calculateCost, type Api, type Model, type Usage } from "@earendil-works/pi-ai";
+import { type Api, calculateCost, type Model, type Usage } from "@earendil-works/pi-ai";
 import { buildRemoteCompactionHistory, isResponseItem } from "./history.ts";
 import {
 	isCodexResponsesModel,
@@ -76,9 +76,7 @@ function extractCodexAccountId(token: string): string {
 	if (parts.length !== 3) throw new Error("Failed to extract the ChatGPT account id from the Codex token.");
 	const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as unknown;
 	if (!isRecord(payload)) throw new Error("Invalid Codex token payload.");
-	const auth = isRecord(payload["https://api.openai.com/auth"])
-		? payload["https://api.openai.com/auth"]
-		: undefined;
+	const auth = isRecord(payload["https://api.openai.com/auth"]) ? payload["https://api.openai.com/auth"] : undefined;
 	const accountId = auth?.chatgpt_account_id;
 	if (typeof accountId !== "string" || !accountId) {
 		throw new Error("Failed to extract the ChatGPT account id from the Codex token.");

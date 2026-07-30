@@ -2,14 +2,14 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { Api, Model, Usage } from "@earendil-works/pi-ai";
 import type { ToolInfo } from "../extensions/index.ts";
 import {
+	type AssistantPhase,
+	type BranchEntry,
+	type ContentPartLike,
 	cloneResponseItem,
 	IMAGE_CONTENT_OMITTED_PLACEHOLDER,
 	isRecord,
 	modelKey,
 	RETAINED_MESSAGE_TOKEN_BUDGET,
-	type AssistantPhase,
-	type BranchEntry,
-	type ContentPartLike,
 	type RemoteCompactionDetails,
 	type RemoteCompactionSessionState,
 	type ResponseContentItem,
@@ -99,9 +99,7 @@ function parseThinkingSignature(value: unknown): ResponseItem | undefined {
 							text: item.text,
 						};
 					})
-					.filter(
-						(item): item is { type: "reasoning_text" | "text"; text: string } => item !== undefined,
-					)
+					.filter((item): item is { type: "reasoning_text" | "text"; text: string } => item !== undefined)
 			: undefined;
 		return {
 			type: "reasoning",
@@ -241,15 +239,11 @@ function stripImagesWhenUnsupported(items: ResponseItem[], model: Model<Api>): R
 		const next = cloneResponseItem(item);
 		if (next.type === "message" && Array.isArray(next.content)) {
 			next.content = next.content.map((part) =>
-				part.type === "input_image"
-					? { type: "input_text", text: IMAGE_CONTENT_OMITTED_PLACEHOLDER }
-					: part,
+				part.type === "input_image" ? { type: "input_text", text: IMAGE_CONTENT_OMITTED_PLACEHOLDER } : part,
 			);
 		} else if (next.type === "function_call_output" && Array.isArray(next.output)) {
 			next.output = next.output.map((part) =>
-				part.type === "input_image"
-					? { type: "input_text", text: IMAGE_CONTENT_OMITTED_PLACEHOLDER }
-					: part,
+				part.type === "input_image" ? { type: "input_text", text: IMAGE_CONTENT_OMITTED_PLACEHOLDER } : part,
 			);
 		}
 		return next;
@@ -358,7 +352,8 @@ function parseUsage(value: unknown): Usage | undefined {
 	const output = typeof value.output === "number" ? value.output : 0;
 	const cacheRead = typeof value.cacheRead === "number" ? value.cacheRead : 0;
 	const cacheWrite = typeof value.cacheWrite === "number" ? value.cacheWrite : 0;
-	const totalTokens = typeof value.totalTokens === "number" ? value.totalTokens : input + output + cacheRead + cacheWrite;
+	const totalTokens =
+		typeof value.totalTokens === "number" ? value.totalTokens : input + output + cacheRead + cacheWrite;
 	return {
 		input,
 		output,
