@@ -69,7 +69,9 @@ export {
 } from "./write.ts";
 
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { type Component, TruncatedText, visibleWidth } from "@earendil-works/pi-tui";
 import type { ToolDefinition } from "../extensions/types.ts";
+import { stripAnsi } from "../../utils/ansi.ts";
 import {
 	type BashToolInput,
 	type BashToolOptions,
@@ -103,6 +105,45 @@ type BashDisplayState = {
 	canonicalExecutionArgs?: BashToolInput;
 };
 
+const TOOL_CALL_PREVIEW_MAX_WIDTH = 120;
+
+class CompactToolCallComponent implements Component {
+	constructor(private readonly component: Component) {}
+
+	render(width: number): string[] {
+		const contentLines = this.component
+			.render(width)
+			.filter((line) => stripAnsi(line).trim().length > 0);
+		if (contentLines.length === 0) return [];
+
+		const singleLine = contentLines.map((line) => line.trim()).join(" ");
+		const needsCompaction =
+			contentLines.length > 1 || visibleWidth(singleLine) > TOOL_CALL_PREVIEW_MAX_WIDTH;
+		if (!needsCompaction) return contentLines;
+
+		const previewWidth = Math.max(1, Math.min(width, TOOL_CALL_PREVIEW_MAX_WIDTH));
+		return new TruncatedText(singleLine, 0, 0).render(previewWidth);
+	}
+
+	invalidate(): void {
+		this.component.invalidate?.();
+	}
+}
+
+function withCompactCallDisplay<T extends ToolDef>(definition: T): T {
+	const renderCall = definition.renderCall;
+	if (!renderCall) return definition;
+
+	return {
+		...definition,
+		renderCall(args, activeTheme, context) {
+			const component = renderCall(args, activeTheme, context);
+			if (!context.executionStarted || context.expanded) return component;
+			return new CompactToolCallComponent(component);
+		},
+	} as T;
+}
+
 function createBashDisplayToolDefinition(
 	cwd: string,
 	options?: BashToolOptions,
@@ -120,10 +161,12 @@ function createBashDisplayToolDefinition(
 				state.canonicalExecutionArgs = executionArgs;
 			}
 
-			// Never render streamed command fragments while a Bash call is still
-			// running. Completed and restored calls use their persisted arguments.
+			// Keep streamed command fragments hidden, then reveal the complete event
+			// arguments as soon as execution starts. Canonical runtime arguments win
+			// once the execution wrapper has recorded them.
 			const displayArgs: BashToolInput =
-				state.canonicalExecutionArgs ?? (context.isPartial ? { command: "" } : args);
+				state.canonicalExecutionArgs ??
+				(context.executionStarted || !context.isPartial ? args : { command: "" });
 			return renderCall(displayArgs, activeTheme, context);
 		},
 	};
@@ -132,19 +175,19 @@ function createBashDisplayToolDefinition(
 export function createToolDefinition(toolName: ToolName, cwd: string, options?: ToolsOptions): ToolDef {
 	switch (toolName) {
 		case "read":
-			return createReadToolDefinition(cwd, options?.read);
+			return withCompactCallDisplay(createReadToolDefinition(cwd, options?.read));
 		case "bash":
-			return createBashDisplayToolDefinition(cwd, options?.bash);
+			return withCompactCallDisplay(createBashDisplayToolDefinition(cwd, options?.bash));
 		case "edit":
-			return createEditToolDefinition(cwd, options?.edit);
+			return withCompactCallDisplay(createEditToolDefinition(cwd, options?.edit));
 		case "write":
-			return createWriteToolDefinition(cwd, options?.write);
+			return withCompactCallDisplay(createWriteToolDefinition(cwd, options?.write));
 		case "grep":
-			return createGrepToolDefinition(cwd, options?.grep);
+			return withCompactCallDisplay(createGrepToolDefinition(cwd, options?.grep));
 		case "find":
-			return createFindToolDefinition(cwd, options?.find);
+			return withCompactCallDisplay(createFindToolDefinition(cwd, options?.find));
 		case "ls":
-			return createLsToolDefinition(cwd, options?.ls);
+			return withCompactCallDisplay(createLsToolDefinition(cwd, options?.ls));
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -173,31 +216,31 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 
 export function createCodingToolDefinitions(cwd: string, options?: ToolsOptions): ToolDef[] {
 	return [
-		createReadToolDefinition(cwd, options?.read),
-		createBashDisplayToolDefinition(cwd, options?.bash),
-		createEditToolDefinition(cwd, options?.edit),
-		createWriteToolDefinition(cwd, options?.write),
+		createToolDefinition("read", cwd, options),
+		createToolDefinition("bash", cwd, options),
+		createToolDefinition("edit", cwd, options),
+		createToolDefinition("write", cwd, options),
 	];
 }
 
 export function createReadOnlyToolDefinitions(cwd: string, options?: ToolsOptions): ToolDef[] {
 	return [
-		createReadToolDefinition(cwd, options?.read),
-		createGrepToolDefinition(cwd, options?.grep),
-		createFindToolDefinition(cwd, options?.find),
-		createLsToolDefinition(cwd, options?.ls),
+		createToolDefinition("read", cwd, options),
+		createToolDefinition("grep", cwd, options),
+		createToolDefinition("find", cwd, options),
+		createToolDefinition("ls", cwd, options),
 	];
 }
 
 export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): Record<ToolName, ToolDef> {
 	return {
-		read: createReadToolDefinition(cwd, options?.read),
-		bash: createBashDisplayToolDefinition(cwd, options?.bash),
-		edit: createEditToolDefinition(cwd, options?.edit),
-		write: createWriteToolDefinition(cwd, options?.write),
-		grep: createGrepToolDefinition(cwd, options?.grep),
-		find: createFindToolDefinition(cwd, options?.find),
-		ls: createLsToolDefinition(cwd, options?.ls),
+		read: createToolDefinition("read", cwd, options),
+		bash: createToolDefinition("bash", cwd, options),
+		edit: createToolDefinition("edit", cwd, options),
+		write: createToolDefinition("write", cwd, options),
+		grep: createToolDefinition("grep", cwd, options),
+		find: createToolDefinition("find", cwd, options),
+		ls: createToolDefinition("ls", cwd, options),
 	};
 }
 
