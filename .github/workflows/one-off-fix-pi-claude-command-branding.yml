@@ -1,9 +1,13 @@
 name: One-off pi-claude command branding fix
 
 on:
-  push:
+  pull_request:
     branches:
       - main
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 permissions:
   contents: write
