@@ -1,0 +1,80 @@
+name: Scheduled Release v0.83.1
+
+on:
+  schedule:
+    - cron: '20 1 31 7 *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: scheduled-release-v0.83.1
+  cancel-in-progress: false
+
+jobs:
+  trigger-release:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: v0.83.1
+      RELEASE_SHA: ac32ad03292ec95f885c99630fe6eeea047538e7
+      RELEASE_WORKFLOW: build-binaries.yml
+    steps:
+      - name: Check one-time release window
+        id: guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" || "$(date -u +%F)" == "2026-07-31" ]]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping expired one-time release schedule."
+          fi
+
+      - name: Create release tag
+        if: steps.guard.outputs.should_run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          existing_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" --jq '.object.sha' 2>/dev/null || true)"
+          if [[ -n "${existing_sha}" && "${existing_sha}" != "${RELEASE_SHA}" ]]; then
+            echo "::error::${RELEASE_TAG} already exists at ${existing_sha}; expected ${RELEASE_SHA}."
+            exit 1
+          fi
+          if [[ -z "${existing_sha}" ]]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+              --raw-field "ref=refs/tags/${RELEASE_TAG}" \
+              --raw-field "sha=${RELEASE_SHA}"
+          fi
+
+      - name: Trigger build and publish workflow
+        if: steps.guard.outputs.should_run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run "${RELEASE_WORKFLOW}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --ref main \
+            --raw-field "tag=${RELEASE_TAG}" \
+            --raw-field "source_ref=${RELEASE_TAG}"
+
+      - name: Remove one-time schedule
+        if: steps.guard.outputs.should_run == 'true'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SCHEDULE_PATH: .github/workflows/scheduled-release-v0.83.1.yml
+        shell: bash
+        run: |
+          set -euo pipefail
+          file_sha="$(gh api "repos/${GITHUB_REPOSITORY}/contents/${SCHEDULE_PATH}?ref=main" --jq '.sha')"
+          gh api --method DELETE "repos/${GITHUB_REPOSITORY}/contents/${SCHEDULE_PATH}" \
+            --raw-field "message=chore: remove completed ${RELEASE_TAG} schedule" \
+            --raw-field "sha=${file_sha}" \
+            --raw-field "branch=main"
