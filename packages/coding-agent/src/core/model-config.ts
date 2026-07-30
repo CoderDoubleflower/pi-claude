@@ -136,6 +136,11 @@ const ProviderCompatSchema = Type.Union([
 	AnthropicMessagesCompatSchema,
 ]);
 
+const RemoteCompactionConfigSchema = Type.Object({
+	enabled: Type.Boolean(),
+	model: Type.Optional(Type.String({ minLength: 1 })),
+});
+
 const ModelCostRatesSchema = {
 	input: Type.Number(),
 	output: Type.Number(),
@@ -194,6 +199,7 @@ const ProviderConfigSchema = Type.Object({
 	oauth: Type.Optional(Type.Literal("radius")),
 	headers: Type.Optional(Type.Record(Type.String(), Type.String())),
 	compat: Type.Optional(ProviderCompatSchema),
+	remoteCompaction: Type.Optional(RemoteCompactionConfigSchema),
 	authHeader: Type.Optional(Type.Boolean()),
 	models: Type.Optional(Type.Array(ModelDefinitionSchema)),
 	modelOverrides: Type.Optional(Type.Record(Type.String(), ModelOverrideSchema)),
@@ -207,6 +213,7 @@ const validateModelsConfig = Compile(ModelsConfigSchema);
 export type ModelsJsonModel = Static<typeof ModelDefinitionSchema>;
 export type ModelsJsonModelOverride = Static<typeof ModelOverrideSchema>;
 export type ModelsJsonProvider = Static<typeof ProviderConfigSchema>;
+export type RemoteCompactionConfig = Static<typeof RemoteCompactionConfigSchema>;
 type ModelsJson = Static<typeof ModelsConfigSchema>;
 
 function formatValidationPath(error: TLocalizedValidationError): string {
@@ -274,7 +281,16 @@ export class ModelConfig {
 		const config = parsed as ModelsJson;
 		const providers = new Map<string, ModelsJsonProvider>();
 		for (const [providerId, provider] of Object.entries(config.providers)) {
-			providers.set(providerId, deepFreeze(structuredClone(provider)));
+			const normalizedProvider = provider.remoteCompaction
+				? {
+						...provider,
+						compat: {
+							...(provider.compat ?? {}),
+							remoteCompaction: provider.remoteCompaction,
+						} as unknown as ModelsJsonProvider["compat"],
+					}
+				: provider;
+			providers.set(providerId, deepFreeze(structuredClone(normalizedProvider)));
 		}
 		return new ModelConfig(providers);
 	}
