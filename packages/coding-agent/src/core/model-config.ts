@@ -281,7 +281,9 @@ export class ModelConfig {
 		const config = parsed as ModelsJson;
 		const providers = new Map<string, ModelsJsonProvider>();
 		for (const [providerId, provider] of Object.entries(config.providers)) {
-			providers.set(providerId, deepFreeze(structuredClone(provider)));
+			const normalizedProvider =
+				provider.remoteCompaction && !provider.compat ? { ...provider, compat: {} } : provider;
+			providers.set(providerId, deepFreeze(structuredClone(normalizedProvider)));
 		}
 		return new ModelConfig(providers);
 	}
