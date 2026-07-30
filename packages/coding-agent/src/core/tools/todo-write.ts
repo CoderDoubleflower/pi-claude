@@ -163,14 +163,13 @@ function formatTodoCall(args: TodoWriteToolInput | undefined, theme: Theme): str
 
 	const lines = todos.map((todo, index) => {
 		const prefix = index === 0 ? "  ⎿  " : "     ";
-		switch (todo.status) {
-			case "completed":
-				return `${prefix}${theme.fg("success", "☒")} ${theme.fg("dim", todo.content)}`;
-			case "in_progress":
-				return `${prefix}${theme.fg("toolRunning", "☐")} ${theme.fg("text", todo.activeForm)}`;
-			case "pending":
-				return `${prefix}${theme.fg("muted", "☐")} ${theme.fg("muted", todo.content)}`;
+		if (todo.status === "completed") {
+			return `${prefix}${theme.fg("success", "☒")} ${theme.fg("dim", todo.content)}`;
 		}
+		if (todo.status === "in_progress") {
+			return `${prefix}${theme.fg("toolRunning", "☐")} ${theme.fg("text", todo.activeForm)}`;
+		}
+		return `${prefix}${theme.fg("muted", "☐")} ${theme.fg("muted", todo.content)}`;
 	});
 
 	return `${title}\n${lines.join("\n")}`;
