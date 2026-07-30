@@ -287,7 +287,7 @@ export class ModelConfig {
 						compat: {
 							...(provider.compat ?? {}),
 							remoteCompaction: provider.remoteCompaction,
-						} as ModelsJsonProvider["compat"],
+						} as unknown as ModelsJsonProvider["compat"],
 					}
 				: provider;
 			providers.set(providerId, deepFreeze(structuredClone(normalizedProvider)));
