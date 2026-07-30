@@ -1,0 +1,191 @@
+name: One-off pi-claude command branding fix
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  fix-branding:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: npm
+
+      - name: Apply command branding fixes
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace(path: str, old: str, new: str, expected: int = 1) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f"{path}: expected {expected} occurrence(s), found {count}: {old!r}")
+              file.write_text(text.replace(old, new), encoding="utf-8")
+
+          replace(
+              "packages/coding-agent/package.json",
+              '\t"piConfig": {\n\t\t"configDir": ".pi"\n\t},',
+              '\t"piConfig": {\n\t\t"name": "pi-claude",\n\t\t"configDir": ".pi"\n\t},',
+          )
+
+          replace(
+              "packages/coding-agent/src/config.ts",
+              'export const APP_NAME: string = piConfigName || "pi";',
+              'export const APP_NAME: string = piConfigName || "pi-claude";',
+          )
+          replace(
+              "packages/coding-agent/src/config.ts",
+              'export const ENV_AGENT_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_DIR`;\nexport const ENV_SESSION_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_SESSION_DIR`;',
+              'const ENV_PREFIX = APP_NAME.toUpperCase().replace(/[^A-Z0-9]+/g, "_");\nexport const ENV_AGENT_DIR = `${ENV_PREFIX}_CODING_AGENT_DIR`;\nexport const ENV_SESSION_DIR = `${ENV_PREFIX}_CODING_AGENT_SESSION_DIR`;',
+          )
+          replace(
+              "packages/coding-agent/src/config.ts",
+              'const envDir = process.env[ENV_AGENT_DIR];',
+              'const envDir = process.env[ENV_AGENT_DIR] ?? process.env.PI_CODING_AGENT_DIR;',
+          )
+          replace(
+              "packages/coding-agent/src/config.ts",
+              'return `Download from: https://github.com/earendil-works/pi-mono/releases/latest`;',
+              'return `Download from: https://github.com/CoderDoubleflower/pi-claude/releases/latest`;',
+          )
+
+          replace(
+              "packages/coding-agent/src/main.ts",
+              'import { ENV_SESSION_DIR, expandTildePath, getAgentDir, getPackageDir, VERSION } from "./config.ts";',
+              'import { APP_NAME, ENV_SESSION_DIR, expandTildePath, getAgentDir, getPackageDir, VERSION } from "./config.ts";',
+          )
+          replace(
+              "packages/coding-agent/src/main.ts",
+              'const EXTENSION_LOAD_FAILURE_HINT = \'Hint: Start without extensions using "pi -ne".\';',
+              'const EXTENSION_LOAD_FAILURE_HINT = `Hint: Start without extensions using "${APP_NAME} -ne".`;',
+          )
+          replace(
+              "packages/coding-agent/src/main.ts",
+              'const envSessionDir = process.env[ENV_SESSION_DIR];',
+              'const envSessionDir = process.env[ENV_SESSION_DIR] ?? process.env.PI_CODING_AGENT_SESSION_DIR;',
+          )
+
+          replace(
+              "packages/coding-agent/src/cli/args.ts",
+              '  ${APP_NAME} update [source|self|pi]   Update pi, extensions, or model catalogs',
+              '  ${APP_NAME} update [source|self|${APP_NAME}]   Update ${APP_NAME}, extensions, or model catalogs',
+          )
+
+          credential_path = "packages/coding-agent/src/cli/credential-print.ts"
+          replace(
+              credential_path,
+              'import type { Api, CredentialInfo, Model } from "@earendil-works/pi-ai";\n',
+              'import type { Api, CredentialInfo, Model } from "@earendil-works/pi-ai";\nimport { APP_NAME } from "../config.ts";\n',
+          )
+          replace(credential_path, '  pi auth print-api-key --model <model> [--provider <provider>]', '  ${APP_NAME} auth print-api-key --model <model> [--provider <provider>]')
+          replace(credential_path, '  pi auth print-bearer-token --model <model> [--provider <provider>] [--min-expiry <duration>]', '  ${APP_NAME} auth print-bearer-token --model <model> [--provider <provider>] [--min-expiry <duration>]')
+          replace(
+              credential_path,
+              '`Unknown auth command "${args[1] ?? ""}". Use "pi auth print-api-key" or "pi auth print-bearer-token".`',
+              '`Unknown auth command "${args[1] ?? ""}". Use "${APP_NAME} auth print-api-key" or "${APP_NAME} auth print-bearer-token".`',
+          )
+
+          package_cli = "packages/coding-agent/src/package-manager-cli.ts"
+          replacements = [
+              ('return `${APP_NAME} update [source|self|pi] [--self|--extensions|--models|--all] [--extension <source>] [--approve|--no-approve] [--force]`;', 'return `${APP_NAME} update [source|self|${APP_NAME}] [--self|--extensions|--models|--all] [--extension <source>] [--approve|--no-approve] [--force]`;'),
+              ('Update pi, installed packages, or model catalogs.', 'Update ${APP_NAME}, installed packages, or model catalogs.'),
+              ('  --self                  Update pi only (default when no target is given)', '  --self                  Update ${APP_NAME} only (default when no target is given)'),
+              ('  --all                   Update pi and installed packages', '  --all                   Update ${APP_NAME} and installed packages'),
+              ('  --force                 Reinstall pi even if the current version is latest', '  --force                 Reinstall ${APP_NAME} even if the current version is latest'),
+              ('  ${APP_NAME} update                Update pi only', '  ${APP_NAME} update                Update ${APP_NAME} only'),
+              ('  ${APP_NAME} update --all          Update pi and all extensions', '  ${APP_NAME} update --all          Update ${APP_NAME} and all extensions'),
+              ('  ${APP_NAME} update pi             Update pi only (self works as alias to pi)', '  ${APP_NAME} update ${APP_NAME}     Update ${APP_NAME} only (self is an alias)'),
+              ('const sourceIsSelf = source === "self" || source === "pi";', 'const sourceIsSelf = source === "self" || source === APP_NAME || source === "pi";'),
+              ('console.error(`Location of pi executable: ${entrypoint}`);', 'console.error(`Location of ${APP_NAME} executable: ${entrypoint}`);'),
+          ]
+          for old, new in replacements:
+              replace(package_cli, old, new)
+
+          interactive = "packages/coding-agent/src/modes/interactive/interactive-mode.ts"
+          replace(
+              interactive,
+              '`This project is not trusted. Project ${CONFIG_DIR_NAME} resources and packages are ignored. Use /trust to save a trust decision, then restart pi.`',
+              '`This project is not trusted. Project ${CONFIG_DIR_NAME} resources and packages are ignored. Use /trust to save a trust decision, then restart ${APP_NAME}.`',
+          )
+          replace(interactive, 'console.error("pi exiting due to uncaughtException:");', 'console.error(`${APP_NAME} exiting due to uncaughtException:`);')
+          replace(
+              interactive,
+              '`Saved trust decision: ${selection.trusted ? "trusted" : "untrusted"}. Restart pi for this to take effect.`',
+              '`Saved trust decision: ${selection.trusted ? "trusted" : "untrusted"}. Restart ${APP_NAME} for this to take effect.`',
+          )
+          replace(
+              interactive,
+              'dialog.showInfo(`${providerOption.method?.name ?? "Authentication"} is configured outside pi.`, [], true);',
+              'dialog.showInfo(`${providerOption.method?.name ?? "Authentication"} is configured outside ${APP_NAME}.`, [], true);',
+          )
+
+          test_path = "packages/coding-agent/test/package-command-paths.test.ts"
+          replace(
+              test_path,
+              'import { ENV_AGENT_DIR, PACKAGE_NAME, VERSION } from "../src/config.ts";',
+              'import { APP_NAME, ENV_AGENT_DIR, PACKAGE_NAME, VERSION } from "../src/config.ts";',
+          )
+          replace(test_path, 'expect(stdout).not.toContain("Updated pi");', 'expect(stdout).not.toContain(`Updated ${APP_NAME}`);')
+          replace(
+              test_path,
+              'expect(stderr).toContain("Run `pnpm store prune` and retry `pi update --self`.");',
+              'expect(stderr).toContain(`Run \\`pnpm store prune\\` and retry \\`${APP_NAME} update --self\\`.`);',
+          )
+
+          Path("packages/coding-agent/test/command-branding.test.ts").write_text(
+              '''import { afterEach, describe, expect, it, vi } from "vitest";\nimport { printHelp } from "../src/cli/args.ts";\nimport { printCredentialPrintHelp } from "../src/cli/credential-print.ts";\nimport { APP_NAME } from "../src/config.ts";\nimport { handlePackageCommand } from "../src/package-manager-cli.ts";\n\ndescribe("pi-claude command branding", () => {\n\tafterEach(() => {\n\t\tvi.restoreAllMocks();\n\t});\n\n\tit("uses pi-claude as the application name", () => {\n\t\texpect(APP_NAME).toBe("pi-claude");\n\t});\n\n\tit("brands top-level and auth help with pi-claude", () => {\n\t\tconst log = vi.spyOn(console, "log").mockImplementation(() => {});\n\t\tprintHelp();\n\t\tprintCredentialPrintHelp();\n\t\tconst output = log.mock.calls.map(([message]) => String(message)).join("\\n");\n\n\t\texpect(output).toContain("pi-claude auth print-api-key");\n\t\texpect(output).toContain("pi-claude update");\n\t\texpect(output).not.toContain("  pi auth");\n\t\texpect(output).not.toContain("Update pi,");\n\t});\n\n\tit("brands package update help with pi-claude", async () => {\n\t\tconst log = vi.spyOn(console, "log").mockImplementation(() => {});\n\t\texpect(await handlePackageCommand(["update", "--help"])).toBe(true);\n\t\tconst output = log.mock.calls.map(([message]) => String(message)).join("\\n");\n\n\t\texpect(output).toContain("Update pi-claude");\n\t\texpect(output).toContain("pi-claude update pi-claude");\n\t\texpect(output).not.toContain("Update pi only");\n\t});\n});\n''',
+              encoding="utf-8",
+          )
+
+          standalone_pi = re.compile(r"(?<![\\w-])pi(?![\\w-])", re.IGNORECASE)
+          command_words = re.compile(r"usage|run|restart|update|install|remove|auth|executable|outside|start without", re.IGNORECASE)
+          print("Potential remaining standalone pi command/branding lines:")
+          for path in sorted(Path("packages/coding-agent/src").rglob("*.ts")):
+              for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+                  if standalone_pi.search(line) and command_words.search(line):
+                      print(f"{path}:{number}: {line.strip()}")
+          PY
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run focused tests
+        run: npx vitest --run packages/coding-agent/test/command-branding.test.ts packages/coding-agent/test/package-command-paths.test.ts
+
+      - name: Validate diff
+        run: git diff --check
+
+      - name: Commit fixes and remove one-off workflow
+        shell: bash
+        run: |
+          git rm .github/workflows/one-off-fix-pi-claude-command-branding.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/coding-agent/package.json \
+            packages/coding-agent/src/config.ts \
+            packages/coding-agent/src/main.ts \
+            packages/coding-agent/src/cli/args.ts \
+            packages/coding-agent/src/cli/credential-print.ts \
+            packages/coding-agent/src/package-manager-cli.ts \
+            packages/coding-agent/src/modes/interactive/interactive-mode.ts \
+            packages/coding-agent/test/package-command-paths.test.ts \
+            packages/coding-agent/test/command-branding.test.ts
+          git commit -m "fix(coding-agent): use pi-claude in command prompts"
+          git push origin HEAD:main
