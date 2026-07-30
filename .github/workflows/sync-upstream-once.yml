@@ -1,0 +1,103 @@
+name: One-off upstream sync
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/sync-upstream-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.event.head_commit.message == 'chore: run one-off upstream sync'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Merge upstream while preserving fork customizations
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/earendil-works/pi.git
+          git fetch --no-tags upstream main
+          git checkout -B automation/upstream-sync-2026-07-30
+          git merge --no-ff -X ours upstream/main -m "Merge upstream earendil-works/pi main"
+
+      - name: Reconcile fork package metadata and changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const { execFileSync } = require('node:child_process');
+
+          const readJson = (path) => JSON.parse(fs.readFileSync(path, 'utf8'));
+          const upstreamJson = (path) => JSON.parse(execFileSync('git', ['show', `upstream/main:${path}`], { encoding: 'utf8' }));
+          const writeJson = (path, value) => fs.writeFileSync(path, `${JSON.stringify(value, null, '\t')}\n`);
+
+          const codingPath = 'packages/coding-agent/package.json';
+          const customCoding = readJson(codingPath);
+          const coding = upstreamJson(codingPath);
+          for (const key of ['name', 'description', 'piConfig', 'bin', 'keywords', 'author', 'contributors', 'repository', 'bugs', 'homepage', 'publishConfig']) {
+            if (Object.prototype.hasOwnProperty.call(customCoding, key)) coding[key] = customCoding[key];
+          }
+          writeJson(codingPath, coding);
+
+          const customPackageName = coding.name;
+          const customVersion = coding.version;
+
+          for (const path of ['packages/evals/package.json', 'packages/server/package.json']) {
+            const pkg = upstreamJson(path);
+            for (const section of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']) {
+              if (!pkg[section] || !Object.prototype.hasOwnProperty.call(pkg[section], '@earendil-works/pi-coding-agent')) continue;
+              delete pkg[section]['@earendil-works/pi-coding-agent'];
+              pkg[section][customPackageName] = `^${customVersion}`;
+            }
+            writeJson(path, pkg);
+          }
+
+          const changelogPath = 'packages/coding-agent/CHANGELOG.md';
+          const upstreamChangelog = execFileSync('git', ['show', `upstream/main:${changelogPath}`], { encoding: 'utf8' });
+          const forkEntry = '- Changed interactive built-in and extension tool calls to show a compact command with orange running, green success, and red failure indicators; running output now previews only the latest five visual lines and completed output is hidden.';
+          const marker = '## [Unreleased]\n';
+          const mergedChangelog = upstreamChangelog.replace(marker, `${marker}\n### Changed\n\n${forkEntry}\n`);
+          fs.writeFileSync(changelogPath, mergedChangelog);
+          NODE
+
+      - name: Regenerate lock files
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --package-lock-only --ignore-scripts
+          node scripts/generate-coding-agent-shrinkwrap.mjs
+          node scripts/generate-coding-agent-install-lock.mjs
+          git add package-lock.json packages/coding-agent/package.json packages/coding-agent/CHANGELOG.md packages/coding-agent/npm-shrinkwrap.json packages/coding-agent/install-lock/package.json packages/coding-agent/install-lock/package-lock.json packages/evals/package.json packages/server/package.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: reconcile fork metadata after upstream sync"
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Test coding agent
+        run: npm test --workspace=@doubleflower/pi-claude
+
+      - name: Push sync branch
+        shell: bash
+        run: git push --force-with-lease origin HEAD:refs/heads/automation/upstream-sync-2026-07-30
