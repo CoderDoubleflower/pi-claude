@@ -40,16 +40,27 @@ import {
 	type SessionContextLike,
 } from "./types.ts";
 
+const REJECTED_REMOTE_COMPACTION_ENTRY = "pi-claude.remote-compaction-rejected";
+
 function getSessionId(ctx: SessionContextLike): string {
 	return ctx.sessionManager.getSessionId();
 }
 
+function isRemoteStateRejected(branchEntries: BranchEntry[], state: RemoteCompactionSessionState): boolean {
+	return branchEntries.some(
+		(entry) =>
+			entry.type === "custom" &&
+			entry.customType === REJECTED_REMOTE_COMPACTION_ENTRY &&
+			isRecord(entry.data) &&
+			entry.data.compactionEntryId === state.compactionEntryId,
+	);
+}
+
 function syncRemoteState(ctx: SessionContextLike): void {
 	const sessionId = getSessionId(ctx);
-	const state = reconstructRemoteCompactionStateFromBranch({
-		branchEntries: ctx.sessionManager.getBranch(),
-	});
-	if (state) setRemoteCompactionState(sessionId, state);
+	const branchEntries = ctx.sessionManager.getBranch();
+	const state = reconstructRemoteCompactionStateFromBranch({ branchEntries });
+	if (state && !isRemoteStateRejected(branchEntries, state)) setRemoteCompactionState(sessionId, state);
 	else clearRemoteCompactionState(sessionId);
 }
 
@@ -62,6 +73,11 @@ function getMatchingRemoteState(
 	return state?.modelKey === modelKey(model) ? state : undefined;
 }
 
+function rejectRemoteState(pi: ExtensionAPI, sessionId: string, state: RemoteCompactionSessionState): void {
+	clearRemoteCompactionState(sessionId);
+	pi.appendEntry(REJECTED_REMOTE_COMPACTION_ENTRY, { compactionEntryId: state.compactionEntryId });
+}
+
 function extendRemoteHistoryIfCompatible(params: {
 	sessionId: string;
 	model: Model<Api> | undefined;
@@ -69,10 +85,6 @@ function extendRemoteHistoryIfCompatible(params: {
 }): void {
 	const state = getMatchingRemoteState(params.sessionId, params.model);
 	if (!state || !params.model) return;
-	if (params.message.role === "assistant" && params.message.stopReason === "error") {
-		clearRemoteCompactionState(params.sessionId);
-		return;
-	}
 	if (
 		params.message.role === "assistant" &&
 		(params.message.provider !== params.model.provider || params.message.model !== params.model.id)
@@ -180,9 +192,12 @@ export default function remoteCompactionExtension(pi: ExtensionAPI): void {
 		const thinkingLevel = (pi.getThinkingLevel() ?? getBranchThinkingLevel(branchEntries)) as
 			| ThinkingLevel
 			| undefined;
-		const reasoning =
-			observedShape?.reasoning ??
-			(compactionModel.reasoning ? thinkingLevelToResponsesReasoning(thinkingLevel) : undefined);
+		const fallbackReasoning = compactionModel.reasoning
+			? thinkingLevelToResponsesReasoning(thinkingLevel)
+			: undefined;
+		const sameRequestModel = modelKey(activeModel) === modelKey(compactionModel);
+		const reasoning = sameRequestModel ? (observedShape?.reasoning ?? fallbackReasoning) : fallbackReasoning;
+		const text = sameRequestModel ? observedShape?.text : undefined;
 		const tools = buildToolsPayload(pi.getAllTools(), pi.getActiveTools());
 
 		const [localResult, remoteResult] = await Promise.allSettled([
@@ -207,7 +222,7 @@ export default function remoteCompactionExtension(pi: ExtensionAPI): void {
 				tools,
 				parallelToolCalls: true,
 				reasoning,
-				text: observedShape?.text,
+				text,
 				signal: event.signal,
 			}),
 		]);
@@ -256,11 +271,13 @@ export default function remoteCompactionExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.on("message_end", (event, ctx) => {
-		extendRemoteHistoryIfCompatible({
-			sessionId: getSessionId(ctx),
-			model: ctx.model,
-			message: event.message,
-		});
+		const sessionId = getSessionId(ctx);
+		const state = getMatchingRemoteState(sessionId, ctx.model);
+		if (state && event.message.role === "assistant" && event.message.stopReason === "error") {
+			rejectRemoteState(pi, sessionId, state);
+			return;
+		}
+		extendRemoteHistoryIfCompatible({ sessionId, model: ctx.model, message: event.message });
 	});
 
 	pi.on("before_provider_request", (event, ctx) => {
@@ -285,11 +302,12 @@ export default function remoteCompactionExtension(pi: ExtensionAPI): void {
 	pi.on("after_provider_response", (event, ctx) => {
 		if (event.status < 400) return;
 		const sessionId = getSessionId(ctx);
-		if (!getMatchingRemoteState(sessionId, ctx.model)) return;
-		clearRemoteCompactionState(sessionId);
+		const state = getMatchingRemoteState(sessionId, ctx.model);
+		if (!state) return;
+		rejectRemoteState(pi, sessionId, state);
 		if (ctx.hasUI) {
 			ctx.ui.notify(
-				"The provider rejected remote compaction history; retrying with the portable local summary.",
+				"The provider rejected remote compaction history; subsequent requests will use the portable local summary.",
 				"warning",
 			);
 		}
