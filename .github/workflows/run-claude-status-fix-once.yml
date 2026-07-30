@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  apply:
+  cleanup:
     if: github.event.pull_request.title == 'Trigger Claude status fix'
     runs-on: ubuntu-latest
 
@@ -22,43 +22,39 @@ jobs:
           ref: fix/claude-completion-status
           fetch-depth: 0
 
-      - name: Check whether patch is still pending
-        id: patch
+      - name: Check whether cleanup is pending
+        id: cleanup
         shell: bash
         run: |
-          if [[ -f .github/scripts/apply-claude-status-fix.mjs ]]; then
+          if [[ -f .github/scripts/cleanup-claude-status-branch.mjs ]]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/setup-node@v6
-        if: steps.patch.outputs.run == 'true'
+        if: steps.cleanup.outputs.run == 'true'
         with:
           node-version: '22'
           package-manager-cache: false
 
       - name: Install system dependencies
-        if: steps.patch.outputs.run == 'true'
+        if: steps.cleanup.outputs.run == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
           sudo ln -s $(which fdfind) /usr/local/bin/fd
 
       - name: Install dependencies
-        if: steps.patch.outputs.run == 'true'
+        if: steps.cleanup.outputs.run == 'true'
         run: npm ci --ignore-scripts
 
-      - name: Apply exact source patch
-        if: steps.patch.outputs.run == 'true'
-        run: node .github/scripts/apply-claude-status-fix.mjs
+      - name: Restore unrelated files
+        if: steps.cleanup.outputs.run == 'true'
+        run: node .github/scripts/cleanup-claude-status-branch.mjs
 
-      - name: Complete focused test fixture
-        if: steps.patch.outputs.run == 'true'
-        run: node .github/scripts/fix-claude-status-test.mjs
-
-      - name: Format changed files
-        if: steps.patch.outputs.run == 'true'
+      - name: Format intended files
+        if: steps.cleanup.outputs.run == 'true'
         run: >-
           npx biome check --write --error-on-warnings
           packages/coding-agent/src/modes/interactive/components/claude-working.ts
@@ -68,22 +64,39 @@ jobs:
           packages/coding-agent/test/claude-status.test.ts
 
       - name: Build
-        if: steps.patch.outputs.run == 'true'
+        if: steps.cleanup.outputs.run == 'true'
         run: npm run build
 
-      - name: Check
-        if: steps.patch.outputs.run == 'true'
-        run: npm run check
+      - name: Typecheck
+        if: steps.cleanup.outputs.run == 'true'
+        run: npx tsgo --noEmit
 
       - name: Run focused tests
-        if: steps.patch.outputs.run == 'true'
+        if: steps.cleanup.outputs.run == 'true'
         run: npx vitest --run packages/coding-agent/test/claude-status.test.ts
 
-      - name: Commit verified changes
-        if: steps.patch.outputs.run == 'true'
+      - name: Validate diff scope
+        if: steps.cleanup.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=$(git merge-base origin/main HEAD)
+          git diff --name-only "$base" | sort > /tmp/actual-files
+          cat > /tmp/expected-files <<'EOF'
+          packages/coding-agent/src/modes/interactive/components/claude-working.ts
+          packages/coding-agent/src/modes/interactive/components/custom-editor.ts
+          packages/coding-agent/src/modes/interactive/components/status-indicator.ts
+          packages/coding-agent/src/modes/interactive/interactive-mode.ts
+          packages/coding-agent/test/claude-status.test.ts
+          EOF
+          sort -o /tmp/expected-files /tmp/expected-files
+          diff -u /tmp/expected-files /tmp/actual-files
+
+      - name: Commit cleaned changes
+        if: steps.cleanup.outputs.run == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "fix(coding-agent): preserve Claude completion status"
+          git commit -m "chore: clean Claude status PR diff"
           git push origin HEAD:fix/claude-completion-status
