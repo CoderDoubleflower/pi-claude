@@ -146,12 +146,19 @@ jobs:
               'import { ENV_AGENT_DIR, PACKAGE_NAME, VERSION } from "../src/config.ts";',
               'import { APP_NAME, ENV_AGENT_DIR, PACKAGE_NAME, VERSION } from "../src/config.ts";',
           )
-          replace(test_path, 'expect(stdout).not.toContain("Updated pi");', 'expect(stdout).not.toContain(`Updated ${APP_NAME}`);')
-          replace(
-              test_path,
-              'expect(stderr).toContain("Run `pnpm store prune` and retry `pi update --self`.");',
-              'expect(stderr).toContain(`Run \\`pnpm store prune\\` and retry \\`${APP_NAME} update --self\\`.`);',
-          )
+          test_replacements = [
+              ('expect(stdout).toContain("pi install <source> [-l]");', 'expect(stdout).toContain(`${APP_NAME} install <source> [-l]`);'),
+              ('expect(stderr).toContain(\'Use "pi --help" or "pi install <source> [-l] [--approve|--no-approve]".\');', 'expect(stderr).toContain(`Use "${APP_NAME} --help" or "${APP_NAME} install <source> [-l] [--approve|--no-approve]".`);'),
+              ('expect(stderr).toContain("Usage: pi install <source> [-l]");', 'expect(stderr).toContain(`Usage: ${APP_NAME} install <source> [-l]`);'),
+              ('`pi is already up to date (v${VERSION})`', '`${APP_NAME} is already up to date (v${VERSION})`'),
+              ('`Updated pi from ${VERSION} to ${VERSION}`', '`Updated ${APP_NAME} from ${VERSION} to ${VERSION}`'),
+              ('`Updated pi from ${VERSION} to ${targetVersion}`', '`Updated ${APP_NAME} from ${VERSION} to ${targetVersion}`'),
+              ('expect(stdout).not.toContain("Updated pi");', 'expect(stdout).not.toContain(`Updated ${APP_NAME}`);'),
+              ('expect(stdout).not.toContain(`Updated pi`);', 'expect(stdout).not.toContain(`Updated ${APP_NAME}`);'),
+              ('expect(stderr).toContain("Run `pnpm store prune` and retry `pi update --self`.");', 'expect(stderr).toContain(`Run \\`pnpm store prune\\` and retry \\`${APP_NAME} update --self\\`.`);'),
+          ]
+          for old, new in test_replacements:
+              replace(test_path, old, new)
 
           Path("packages/coding-agent/test/command-branding.test.ts").write_text(
               '''import { afterEach, describe, expect, it, vi } from "vitest";\nimport { printHelp } from "../src/cli/args.ts";\nimport { printCredentialPrintHelp } from "../src/cli/credential-print.ts";\nimport { APP_NAME } from "../src/config.ts";\nimport { handlePackageCommand } from "../src/package-manager-cli.ts";\n\ndescribe("pi-claude command branding", () => {\n\tafterEach(() => {\n\t\tvi.restoreAllMocks();\n\t});\n\n\tit("uses pi-claude as the application name", () => {\n\t\texpect(APP_NAME).toBe("pi-claude");\n\t});\n\n\tit("brands top-level and auth help with pi-claude", () => {\n\t\tconst log = vi.spyOn(console, "log").mockImplementation(() => {});\n\t\tprintHelp();\n\t\tprintCredentialPrintHelp();\n\t\tconst output = log.mock.calls.map(([message]) => String(message)).join("\\n");\n\n\t\texpect(output).toContain("pi-claude auth print-api-key");\n\t\texpect(output).toContain("pi-claude update");\n\t\texpect(output).not.toContain("  pi auth");\n\t\texpect(output).not.toContain("Update pi,");\n\t});\n\n\tit("brands package update help with pi-claude", async () => {\n\t\tconst log = vi.spyOn(console, "log").mockImplementation(() => {});\n\t\texpect(await handlePackageCommand(["update", "--help"])).toBe(true);\n\t\tconst output = log.mock.calls.map(([message]) => String(message)).join("\\n");\n\n\t\texpect(output).toContain("Update pi-claude");\n\t\texpect(output).toContain("pi-claude update pi-claude");\n\t\texpect(output).not.toContain("Update pi only");\n\t});\n});\n''',
