@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  cleanup:
+  refine:
     if: github.event.pull_request.title == 'Trigger Claude status fix'
     runs-on: ubuntu-latest
 
@@ -22,61 +22,60 @@ jobs:
           ref: fix/claude-completion-status
           fetch-depth: 0
 
-      - name: Check whether cleanup is pending
-        id: cleanup
+      - name: Check whether refinement is pending
+        id: refine
         shell: bash
         run: |
-          if [[ -f .github/scripts/cleanup-claude-status-branch.mjs ]]; then
+          if [[ -f .github/scripts/refine-claude-status-branch.mjs ]]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/setup-node@v6
-        if: steps.cleanup.outputs.run == 'true'
+        if: steps.refine.outputs.run == 'true'
         with:
           node-version: '22'
           package-manager-cache: false
 
       - name: Install system dependencies
-        if: steps.cleanup.outputs.run == 'true'
+        if: steps.refine.outputs.run == 'true'
         run: |
           sudo apt-get update
           sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
           sudo ln -s $(which fdfind) /usr/local/bin/fd
 
       - name: Install dependencies
-        if: steps.cleanup.outputs.run == 'true'
+        if: steps.refine.outputs.run == 'true'
         run: npm ci --ignore-scripts
 
-      - name: Restore unrelated files
-        if: steps.cleanup.outputs.run == 'true'
-        run: node .github/scripts/cleanup-claude-status-branch.mjs
+      - name: Refine theme color implementation
+        if: steps.refine.outputs.run == 'true'
+        run: node .github/scripts/refine-claude-status-branch.mjs
 
       - name: Format intended files
-        if: steps.cleanup.outputs.run == 'true'
+        if: steps.refine.outputs.run == 'true'
         run: >-
           npx biome check --write --error-on-warnings
           packages/coding-agent/src/modes/interactive/components/claude-working.ts
-          packages/coding-agent/src/modes/interactive/components/custom-editor.ts
           packages/coding-agent/src/modes/interactive/components/status-indicator.ts
           packages/coding-agent/src/modes/interactive/interactive-mode.ts
           packages/coding-agent/test/claude-status.test.ts
 
       - name: Build
-        if: steps.cleanup.outputs.run == 'true'
+        if: steps.refine.outputs.run == 'true'
         run: npm run build
 
       - name: Typecheck
-        if: steps.cleanup.outputs.run == 'true'
+        if: steps.refine.outputs.run == 'true'
         run: npx tsgo --noEmit
 
       - name: Run focused tests
-        if: steps.cleanup.outputs.run == 'true'
+        if: steps.refine.outputs.run == 'true'
         run: npx vitest --run packages/coding-agent/test/claude-status.test.ts
 
       - name: Validate diff scope
-        if: steps.cleanup.outputs.run == 'true'
+        if: steps.refine.outputs.run == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -84,7 +83,6 @@ jobs:
           git diff --name-only "$base" | sort > /tmp/actual-files
           cat > /tmp/expected-files <<'EOF'
           packages/coding-agent/src/modes/interactive/components/claude-working.ts
-          packages/coding-agent/src/modes/interactive/components/custom-editor.ts
           packages/coding-agent/src/modes/interactive/components/status-indicator.ts
           packages/coding-agent/src/modes/interactive/interactive-mode.ts
           packages/coding-agent/test/claude-status.test.ts
@@ -92,11 +90,11 @@ jobs:
           sort -o /tmp/expected-files /tmp/expected-files
           diff -u /tmp/expected-files /tmp/actual-files
 
-      - name: Commit cleaned changes
-        if: steps.cleanup.outputs.run == 'true'
+      - name: Commit refined changes
+        if: steps.refine.outputs.run == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "chore: clean Claude status PR diff"
+          git commit -m "refactor(coding-agent): use theme prompt border directly"
           git push origin HEAD:fix/claude-completion-status
