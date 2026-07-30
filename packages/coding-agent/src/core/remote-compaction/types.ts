@@ -57,7 +57,7 @@ export type RemoteCompactionDetails = {
 	provider: "openai-responses-compaction";
 	implementation: "responses_compaction_v2";
 	modelKey: string;
-	compactionModelKey: string;
+	compactionModelKey?: string;
 	replacementHistory: ResponseItem[];
 	usage?: Usage;
 };
