@@ -1,1 +1,1 @@
-Trigger the validated upstream synchronization workflow.
+Trigger the validated upstream synchronization workflow (retry 2).
