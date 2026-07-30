@@ -120,7 +120,7 @@ export function getRemoteCompactionConfig(model: Model<Api> | undefined): Remote
 	};
 }
 
-export function supportsRemoteCompactionProtocol(model: Model<Api> | undefined): model is Model<Api> {
+export function supportsRemoteCompactionProtocol(model: Model<Api> | undefined): boolean {
 	return model?.api === "openai-responses" || model?.api === "openai-codex-responses";
 }
 
