@@ -51,6 +51,14 @@ export {
 	type ReadToolOptions,
 } from "./read.ts";
 export {
+	createTodoWriteTool,
+	createTodoWriteToolDefinition,
+	type TodoItem,
+	type TodoStatus,
+	type TodoWriteToolDetails,
+	type TodoWriteToolInput,
+} from "./todo-write.ts";
+export {
 	DEFAULT_MAX_BYTES,
 	DEFAULT_MAX_LINES,
 	formatSize,
@@ -84,12 +92,22 @@ import { createFindTool, createFindToolDefinition, type FindToolOptions } from "
 import { createGrepTool, createGrepToolDefinition, type GrepToolOptions } from "./grep.ts";
 import { createLsTool, createLsToolDefinition, type LsToolOptions } from "./ls.ts";
 import { createReadTool, createReadToolDefinition, type ReadToolOptions } from "./read.ts";
+import { createTodoWriteTool, createTodoWriteToolDefinition } from "./todo-write.ts";
 import { createWriteTool, createWriteToolDefinition, type WriteToolOptions } from "./write.ts";
 
 export type Tool = AgentTool<any>;
 export type ToolDef = ToolDefinition<any, any>;
-export type ToolName = "read" | "bash" | "edit" | "write" | "grep" | "find" | "ls";
-export const allToolNames: Set<ToolName> = new Set(["read", "bash", "edit", "write", "grep", "find", "ls"]);
+export type ToolName = "read" | "bash" | "edit" | "write" | "grep" | "find" | "ls" | "TodoWrite";
+export const allToolNames: Set<ToolName> = new Set([
+	"read",
+	"bash",
+	"edit",
+	"write",
+	"grep",
+	"find",
+	"ls",
+	"TodoWrite",
+]);
 
 export interface ToolsOptions {
 	read?: ReadToolOptions;
@@ -200,6 +218,8 @@ export function createToolDefinition(toolName: ToolName, cwd: string, options?: 
 			return withCompactCallDisplay(createFindToolDefinition(cwd, options?.find));
 		case "ls":
 			return withCompactCallDisplay(createLsToolDefinition(cwd, options?.ls));
+		case "TodoWrite":
+			return createTodoWriteToolDefinition();
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -221,6 +241,8 @@ export function createTool(toolName: ToolName, cwd: string, options?: ToolsOptio
 			return createFindTool(cwd, options?.find);
 		case "ls":
 			return createLsTool(cwd, options?.ls);
+		case "TodoWrite":
+			return createTodoWriteTool();
 		default:
 			throw new Error(`Unknown tool name: ${toolName}`);
 	}
@@ -232,6 +254,7 @@ export function createCodingToolDefinitions(cwd: string, options?: ToolsOptions)
 		createToolDefinition("bash", cwd, options),
 		createToolDefinition("edit", cwd, options),
 		createToolDefinition("write", cwd, options),
+		createToolDefinition("TodoWrite", cwd, options),
 	];
 }
 
@@ -253,6 +276,7 @@ export function createAllToolDefinitions(cwd: string, options?: ToolsOptions): R
 		grep: createToolDefinition("grep", cwd, options),
 		find: createToolDefinition("find", cwd, options),
 		ls: createToolDefinition("ls", cwd, options),
+		TodoWrite: createToolDefinition("TodoWrite", cwd, options),
 	};
 }
 
@@ -262,6 +286,7 @@ export function createCodingTools(cwd: string, options?: ToolsOptions): Tool[] {
 		createBashTool(cwd, options?.bash),
 		createEditTool(cwd, options?.edit),
 		createWriteTool(cwd, options?.write),
+		createTodoWriteTool(),
 	];
 }
 
@@ -283,5 +308,6 @@ export function createAllTools(cwd: string, options?: ToolsOptions): Record<Tool
 		grep: createGrepTool(cwd, options?.grep),
 		find: createFindTool(cwd, options?.find),
 		ls: createLsTool(cwd, options?.ls),
+		TodoWrite: createTodoWriteTool(),
 	};
 }
