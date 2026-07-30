@@ -2,14 +2,11 @@ import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import type { Api, Model, Usage } from "@earendil-works/pi-ai";
 
 export const RETAINED_MESSAGE_TOKEN_BUDGET = 20_000;
-export const IMAGE_CONTENT_OMITTED_PLACEHOLDER =
-	"image content omitted because the model does not support image input";
+export const IMAGE_CONTENT_OMITTED_PLACEHOLDER = "image content omitted because the model does not support image input";
 
 export type JsonRecord = Record<string, unknown>;
 export type AssistantPhase = "commentary" | "final_answer";
-export type ToolResultOutputItem =
-	| { type: "input_text"; text: string }
-	| { type: "input_image"; image_url: string };
+export type ToolResultOutputItem = { type: "input_text"; text: string } | { type: "input_image"; image_url: string };
 
 export type ContentPartLike = {
 	type?: string;

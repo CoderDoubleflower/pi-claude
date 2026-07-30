@@ -78,14 +78,9 @@ export {
 
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import type { ToolDefinition } from "../extensions/types.ts";
 import { stripAnsi } from "../../utils/ansi.ts";
-import {
-	type BashToolInput,
-	type BashToolOptions,
-	createBashTool,
-	createBashToolDefinition,
-} from "./bash.ts";
+import type { ToolDefinition } from "../extensions/types.ts";
+import { type BashToolInput, type BashToolOptions, createBashTool, createBashToolDefinition } from "./bash.ts";
 import { createEditTool, createEditToolDefinition, type EditToolOptions } from "./edit.ts";
 import { getToolExecutionArguments } from "./execution-arguments.ts";
 import { createFindTool, createFindToolDefinition, type FindToolOptions } from "./find.ts";
@@ -137,14 +132,11 @@ class CompactToolCallComponent implements Component {
 	}
 
 	render(width: number): string[] {
-		const contentLines = this.component
-			.render(width)
-			.filter((line) => stripAnsi(line).trim().length > 0);
+		const contentLines = this.component.render(width).filter((line) => stripAnsi(line).trim().length > 0);
 		if (contentLines.length === 0) return [];
 
 		const singleLine = contentLines.map((line) => line.trim()).join(" ");
-		const needsCompaction =
-			contentLines.length > 1 || visibleWidth(singleLine) > TOOL_CALL_PREVIEW_MAX_WIDTH;
+		const needsCompaction = contentLines.length > 1 || visibleWidth(singleLine) > TOOL_CALL_PREVIEW_MAX_WIDTH;
 		if (!needsCompaction) return contentLines;
 
 		const previewWidth = Math.max(1, Math.min(width, TOOL_CALL_PREVIEW_MAX_WIDTH));
@@ -195,8 +187,7 @@ function createBashDisplayToolDefinition(
 			// arguments as soon as execution starts. Canonical runtime arguments win
 			// once the execution wrapper has recorded them.
 			const displayArgs: BashToolInput =
-				state.canonicalExecutionArgs ??
-				(context.executionStarted || !context.isPartial ? args : { command: "" });
+				state.canonicalExecutionArgs ?? (context.executionStarted || !context.isPartial ? args : { command: "" });
 			return renderCall(displayArgs, activeTheme, context);
 		},
 	};

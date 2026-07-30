@@ -43,9 +43,7 @@ describe("pi-claude command branding", () => {
 			"../src/modes/interactive/components/first-time-setup.ts",
 			"../src/modes/interactive/interactive-mode.ts",
 		];
-		const sources = sourcePaths
-			.map((path) => readFileSync(new URL(path, import.meta.url), "utf-8"))
-			.join("\n");
+		const sources = sourcePaths.map((path) => readFileSync(new URL(path, import.meta.url), "utf-8")).join("\n");
 
 		expect(sources).not.toContain("This allows pi to load");
 		expect(sources).not.toContain("bugs within Pi.");

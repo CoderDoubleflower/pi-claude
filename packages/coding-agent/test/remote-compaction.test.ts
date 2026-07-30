@@ -9,9 +9,9 @@ import {
 	applyRemoteHistoryPayloadPatch,
 	buildRemoteCompactionRequestBody,
 	getRemoteCompactionConfig,
+	type ResponseItem,
 	reconstructRemoteCompactionStateFromBranch,
 	supportsRemoteCompactionProtocol,
-	type ResponseItem,
 } from "../src/core/remote-compaction/index.ts";
 import { stripImagesFromRemoteHistory } from "../src/core/remote-compaction/sanitize.ts";
 

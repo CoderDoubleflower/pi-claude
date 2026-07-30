@@ -7,22 +7,18 @@ import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 
 const TODO_WRITE_TOOL_NAME = "TodoWrite";
 
-const todoStatusSchema = Type.Union([
-	Type.Literal("pending"),
-	Type.Literal("in_progress"),
-	Type.Literal("completed"),
-]);
+const todoStatusSchema = Type.Union([Type.Literal("pending"), Type.Literal("in_progress"), Type.Literal("completed")]);
 
 const todoItemSchema = Type.Object(
 	{
 		content: Type.String({
 			minLength: 1,
-			description: "The imperative form describing what needs to be done, for example \"Run tests\"",
+			description: 'The imperative form describing what needs to be done, for example "Run tests"',
 		}),
 		status: todoStatusSchema,
 		activeForm: Type.String({
 			minLength: 1,
-			description: "The present continuous form shown during execution, for example \"Running tests\"",
+			description: 'The present continuous form shown during execution, for example "Running tests"',
 		}),
 	},
 	{ additionalProperties: false },

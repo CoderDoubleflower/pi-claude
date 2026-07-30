@@ -6,6 +6,14 @@
 
 - Changed interactive built-in and extension tool calls to show a compact command with orange running, green success, and red failure indicators; running output now previews only the latest five visual lines and completed output is hidden.
 
+### Added
+
+- Added `--alt` to run interactive mode with the alternate-screen TUI ([#7304](https://github.com/earendil-works/pi/issues/7304)).
+
+### Fixed
+
+- Fixed `setToolsExpanded(false)` to be a no-op when tool output is already collapsed, avoiding redundant `Tool output: collapsed` startup notices from extensions ([#7292](https://github.com/earendil-works/pi/issues/7292)).
+
 ## [0.83.0] - 2026-07-29
 
 ### New Features

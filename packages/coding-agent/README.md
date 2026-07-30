@@ -90,6 +90,7 @@ The package inherits Pi's main coding-agent features:
 
 - Read, bash, edit, and write tools
 - Streaming interactive terminal UI
+- Optional alternate-screen TUI with application-owned scrolling via `pi-claude --alt`
 - Persistent sessions with resume, branching, and compaction
 - Multi-provider model selection
 - Project and user context files
