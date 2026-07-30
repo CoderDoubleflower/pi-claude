@@ -197,13 +197,23 @@ const CLAUDE_WORKING_VERBS = [
 	"Zigzagging",
 ] as const;
 
+const CLAUDE_COMPLETED_VERBS = [
+	"Baked",
+	"Brewed",
+	"Churned",
+	"Cogitated",
+	"Cooked",
+	"Crunched",
+	"Sautéed",
+	"Worked",
+] as const;
+const CLAUDE_COMPLETED_GLYPH = "✻";
+
 function getClaudeSpinnerCharacters(): string[] {
 	if (process.env.TERM === "xterm-ghostty") {
 		return ["·", "✢", "✳", "✶", "✻", "*"];
 	}
-	return process.platform === "darwin"
-		? ["·", "✢", "✳", "✶", "✻", "✽"]
-		: ["·", "✢", "*", "✶", "✻", "✽"];
+	return process.platform === "darwin" ? ["·", "✢", "✳", "✶", "✻", "✽"] : ["·", "✢", "*", "✶", "✻", "✽"];
 }
 
 export function createClaudeWorkingMessage(): string {
@@ -215,9 +225,28 @@ export function colorClaudeWorkingText(text: string): string {
 	return colorClaude(text);
 }
 
+export function createClaudeCompletedMessage(): string {
+	return CLAUDE_COMPLETED_VERBS[Math.floor(Math.random() * CLAUDE_COMPLETED_VERBS.length)] ?? "Worked";
+}
+
+export function formatClaudeTurnDuration(durationMs: number): string {
+	const totalSeconds = Math.max(1, Math.round(Math.max(0, durationMs) / 1000));
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	const seconds = totalSeconds % 60;
+	if (hours > 0) return hours + "h " + minutes + "m " + seconds + "s";
+	if (minutes > 0) return minutes + "m " + seconds + "s";
+	return seconds + "s";
+}
+
 const spinnerCharacters = getClaudeSpinnerCharacters();
 
 export const CLAUDE_WORKING_INDICATOR: WorkingIndicatorOptions = {
 	frames: [...spinnerCharacters, ...[...spinnerCharacters].reverse()].map((character) => colorClaude(character)),
+	intervalMs: CLAUDE_SPINNER_INTERVAL_MS,
+};
+
+export const CLAUDE_COMPLETED_INDICATOR: WorkingIndicatorOptions = {
+	frames: [colorClaude(CLAUDE_COMPLETED_GLYPH)],
 	intervalMs: CLAUDE_SPINNER_INTERVAL_MS,
 };

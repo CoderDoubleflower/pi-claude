@@ -132,6 +132,7 @@ import { SkillInvocationMessageComponent } from "./components/skill-invocation-m
 import {
 	BranchSummaryStatusIndicator,
 	CompactionStatusIndicator,
+	CompletedStatusIndicator,
 	IdleStatus,
 	RetryStatusIndicator,
 	type StatusIndicator,
@@ -348,6 +349,7 @@ export class InteractiveMode {
 	private workingVisible = true;
 	private workingIndicatorOptions: WorkingIndicatorOptions | undefined = undefined;
 	private readonly defaultWorkingMessage = "Working...";
+	private agentStartedAt: number | undefined = undefined;
 	private readonly defaultHiddenThinkingLabel = "Thinking...";
 	private hiddenThinkingLabel = this.defaultHiddenThinkingLabel;
 
@@ -2861,6 +2863,7 @@ export class InteractiveMode {
 
 		switch (event.type) {
 			case "agent_start":
+				this.agentStartedAt = Date.now();
 				this.pendingTools.clear();
 				if (this.settingsManager.getShowTerminalProgress()) {
 					this.ui.terminal.setProgress(true);
@@ -3053,11 +3056,18 @@ export class InteractiveMode {
 				break;
 			}
 
-			case "agent_end":
+			case "agent_end": {
 				if (this.settingsManager.getShowTerminalProgress()) {
 					this.ui.terminal.setProgress(false);
 				}
-				this.clearStatusIndicator("working");
+				const agentDurationMs =
+					this.agentStartedAt === undefined ? undefined : Math.max(0, Date.now() - this.agentStartedAt);
+				this.agentStartedAt = undefined;
+				if (this.workingVisible && agentDurationMs !== undefined) {
+					this.showStatusIndicator(new CompletedStatusIndicator(this.ui, agentDurationMs));
+				} else {
+					this.clearStatusIndicator("working");
+				}
 				if (this.streamingComponent) {
 					this.chatContainer.removeChild(this.streamingComponent);
 					this.streamingComponent = undefined;
@@ -3067,6 +3077,7 @@ export class InteractiveMode {
 
 				this.ui.requestRender();
 				break;
+			}
 
 			case "agent_settled":
 				await this.checkShutdownRequested();
@@ -3775,8 +3786,7 @@ export class InteractiveMode {
 		if (this.isBashMode) {
 			this.editor.borderColor = theme.getBashModeBorderColor();
 		} else {
-			const level = this.session.thinkingLevel || "off";
-			this.editor.borderColor = theme.getThinkingBorderColor(level);
+			this.editor.borderColor = getEditorTheme().borderColor;
 		}
 		this.ui.requestRender();
 	}
