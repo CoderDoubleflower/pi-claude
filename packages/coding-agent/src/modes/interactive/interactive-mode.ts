@@ -3786,8 +3786,7 @@ export class InteractiveMode {
 		if (this.isBashMode) {
 			this.editor.borderColor = theme.getBashModeBorderColor();
 		} else {
-			const level = this.session.thinkingLevel || "off";
-			this.editor.borderColor = theme.getThinkingBorderColor(level);
+			this.editor.borderColor = getEditorTheme().borderColor;
 		}
 		this.ui.requestRender();
 	}

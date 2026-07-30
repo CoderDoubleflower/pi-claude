@@ -1,34 +1,32 @@
-import type { EditorTheme, TUI } from "@earendil-works/pi-tui";
+import type { TUI } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { KeybindingsManager } from "../src/core/keybindings.ts";
 import { formatClaudeTurnDuration } from "../src/modes/interactive/components/claude-working.ts";
-import { CustomEditor } from "../src/modes/interactive/components/custom-editor.ts";
 import {
 	CompletedStatusIndicator,
 	WorkingStatusIndicator,
 } from "../src/modes/interactive/components/status-indicator.ts";
-import { initTheme } from "../src/modes/interactive/theme/theme.ts";
+import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
+import { getEditorTheme, initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
+type BorderColor = (text: string) => string;
+type EditorBorderHost = {
+	isBashMode: boolean;
+	editor: { borderColor: BorderColor };
+	ui: { requestRender(): void };
+};
+
 function createTui(): TUI {
-	return {
-		requestRender() {},
-		terminal: { rows: 40, columns: 80 },
-	} as unknown as TUI;
+	return { requestRender() {} } as unknown as TUI;
 }
 
-function createEditorTheme(borderColor: (text: string) => string): EditorTheme {
-	const identity = (text: string) => text;
-	return {
-		borderColor,
-		selectList: {
-			selectedPrefix: identity,
-			selectedText: identity,
-			description: identity,
-			scrollInfo: identity,
-			noMatch: identity,
-		},
-	};
+function applyEditorBorderColor(host: EditorBorderHost): void {
+	const updateEditorBorderColor = (
+		InteractiveMode.prototype as unknown as {
+			updateEditorBorderColor(this: EditorBorderHost): void;
+		}
+	).updateEditorBorderColor;
+	updateEditorBorderColor.call(host);
 }
 
 afterEach(() => {
@@ -70,37 +68,37 @@ describe("Claude status indicators", () => {
 	});
 });
 
-describe("CustomEditor border color", () => {
-	test("uses the theme border for prompts while preserving bash mode", () => {
-		let themeCalls = 0;
-		let thinkingCalls = 0;
-		let bashCalls = 0;
-		const editor = new CustomEditor(
-			createTui(),
-			createEditorTheme((text) => {
-				themeCalls++;
-				return text;
-			}),
-			KeybindingsManager.create(),
-		);
-
-		editor.borderColor = (text) => {
-			thinkingCalls++;
-			return text;
+describe("Interactive editor border color", () => {
+	test("uses the active theme border instead of the thinking level", () => {
+		initTheme("dark");
+		let renderRequests = 0;
+		const host: EditorBorderHost = {
+			isBashMode: false,
+			editor: { borderColor: (text) => theme.fg("thinkingHigh", text) },
+			ui: {
+				requestRender() {
+					renderRequests++;
+				},
+			},
 		};
-		editor.setText("hello");
-		editor.render(40);
-		expect(themeCalls).toBeGreaterThan(0);
-		expect(thinkingCalls).toBe(0);
 
-		themeCalls = 0;
-		editor.borderColor = (text) => {
-			bashCalls++;
-			return text;
+		applyEditorBorderColor(host);
+
+		expect(host.editor.borderColor("─")).toBe(getEditorTheme().borderColor("─"));
+		expect(host.editor.borderColor("─")).toBe(theme.fg("borderMuted", "─"));
+		expect(renderRequests).toBe(1);
+	});
+
+	test("preserves the dedicated bash-mode border", () => {
+		initTheme("dark");
+		const host: EditorBorderHost = {
+			isBashMode: true,
+			editor: { borderColor: getEditorTheme().borderColor },
+			ui: { requestRender() {} },
 		};
-		editor.setText("!pwd");
-		editor.render(40);
-		expect(bashCalls).toBeGreaterThan(0);
-		expect(themeCalls).toBe(0);
+
+		applyEditorBorderColor(host);
+
+		expect(host.editor.borderColor("─")).toBe(theme.getBashModeBorderColor()("─"));
 	});
 });
