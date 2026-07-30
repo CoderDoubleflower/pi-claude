@@ -98,6 +98,13 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Install test search tools
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ripgrep fd-find
+          sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+
       - name: Test coding agent
         run: npm test --workspace=@doubleflower/pi-claude
 
