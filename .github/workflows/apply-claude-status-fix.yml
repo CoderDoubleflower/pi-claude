@@ -1,6 +1,7 @@
 name: Apply Claude status fix
 
 # This branch-local workflow is intentionally removed by the verified patch script.
+# Revision 2: trigger validation after matching the repository's standard build/check order.
 on:
   push:
     branches:
