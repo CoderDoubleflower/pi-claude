@@ -1,5 +1,6 @@
 name: Apply Claude status fix
 
+# This branch-local workflow is intentionally removed by the verified patch script.
 on:
   push:
     branches:
