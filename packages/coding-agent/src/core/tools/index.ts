@@ -69,7 +69,7 @@ export {
 } from "./write.ts";
 
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { type Component, TruncatedText, visibleWidth } from "@earendil-works/pi-tui";
+import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { ToolDefinition } from "../extensions/types.ts";
 import { stripAnsi } from "../../utils/ansi.ts";
 import {
@@ -126,7 +126,7 @@ class CompactToolCallComponent implements Component {
 		if (!needsCompaction) return contentLines;
 
 		const previewWidth = Math.max(1, Math.min(width, TOOL_CALL_PREVIEW_MAX_WIDTH));
-		return new TruncatedText(singleLine, 0, 0).render(previewWidth);
+		return [truncateToWidth(singleLine, previewWidth)];
 	}
 
 	invalidate(): void {
