@@ -1,1 +1,1 @@
-Trigger the one-off upstream merge conflict inspection.
+Trigger the validated upstream synchronization workflow.
