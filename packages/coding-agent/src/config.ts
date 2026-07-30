@@ -333,7 +333,7 @@ export function getSelfUpdateUnavailableInstruction(
 	const method = detectInstallMethod();
 	const target = normalizeSelfUpdatePackageTarget(updatePackageTarget);
 	if (method === "bun-binary") {
-		return `Download from: https://github.com/earendil-works/pi-mono/releases/latest`;
+		return `Download from: https://github.com/CoderDoubleflower/pi-claude/releases/latest`;
 	}
 	const command = getSelfUpdateCommandForMethod(method, packageName, target, npmCommand);
 	if (command) {
@@ -486,14 +486,15 @@ try {
 
 const piConfigName: string | undefined = pkg.piConfig?.name;
 export const PACKAGE_NAME: string = pkg.name || "@doubleflower/pi-claude";
-export const APP_NAME: string = piConfigName || "pi";
+export const APP_NAME: string = piConfigName || "pi-claude";
 export const APP_TITLE: string = piConfigName ? APP_NAME : "π";
 export const CONFIG_DIR_NAME: string = pkg.piConfig?.configDir || ".pi";
 export const VERSION: string = pkg.version || "0.0.0";
 
 // e.g., PI_CODING_AGENT_DIR or TAU_CODING_AGENT_DIR
-export const ENV_AGENT_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_DIR`;
-export const ENV_SESSION_DIR = `${APP_NAME.toUpperCase()}_CODING_AGENT_SESSION_DIR`;
+const ENV_PREFIX = APP_NAME.toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+export const ENV_AGENT_DIR = `${ENV_PREFIX}_CODING_AGENT_DIR`;
+export const ENV_SESSION_DIR = `${ENV_PREFIX}_CODING_AGENT_SESSION_DIR`;
 
 export function expandTildePath(path: string): string {
 	return normalizePath(path);
@@ -513,7 +514,7 @@ export function getShareViewerUrl(gistId: string): string {
 
 /** Get the agent config directory (e.g., ~/.pi/agent/) */
 export function getAgentDir(): string {
-	const envDir = process.env[ENV_AGENT_DIR];
+	const envDir = process.env[ENV_AGENT_DIR] ?? process.env.PI_CODING_AGENT_DIR;
 	if (envDir) {
 		return expandTildePath(envDir);
 	}
