@@ -35,18 +35,25 @@ jobs:
       - uses: actions/setup-node@v6
         if: steps.patch.outputs.run == 'true'
         with:
-          node-version: '24'
+          node-version: '22'
           package-manager-cache: false
+
+      - name: Install system dependencies
+        if: steps.patch.outputs.run == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+          sudo ln -s $(which fdfind) /usr/local/bin/fd
 
       - name: Install dependencies
         if: steps.patch.outputs.run == 'true'
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Apply exact source patch
         if: steps.patch.outputs.run == 'true'
         run: node .github/scripts/apply-claude-status-fix.mjs
 
-      - name: Format and lint changed files
+      - name: Format changed files
         if: steps.patch.outputs.run == 'true'
         run: >-
           npx biome check --write --error-on-warnings
@@ -56,9 +63,13 @@ jobs:
           packages/coding-agent/src/modes/interactive/interactive-mode.ts
           packages/coding-agent/test/claude-status.test.ts
 
-      - name: Typecheck
+      - name: Build
         if: steps.patch.outputs.run == 'true'
-        run: npx tsgo --noEmit
+        run: npm run build
+
+      - name: Check
+        if: steps.patch.outputs.run == 'true'
+        run: npm run check
 
       - name: Run focused tests
         if: steps.patch.outputs.run == 'true'
