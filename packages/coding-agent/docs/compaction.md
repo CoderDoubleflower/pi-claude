@@ -34,6 +34,8 @@ contextTokens > contextWindow - reserveTokens
 
 By default, `reserveTokens` is 16384 tokens (configurable in `~/.pi/agent/settings.json` or `<project-dir>/.pi/settings.json`). This leaves room for the LLM's response.
 
+Pi also checks after each completed tool turn that would otherwise continue automatically. If a tool result crosses the threshold, Pi stops before the next provider request, compacts, and resumes from the retained tool result. Terminating tools remain stopped; cancelled, failed, or insufficient compaction also leaves the run stopped instead of sending oversized context. This threshold continuation keeps extension `willRetry` metadata false because no overflow retry occurred.
+
 You can also trigger manually with `/compact [instructions]`, where optional instructions focus the summary.
 
 ### How It Works
