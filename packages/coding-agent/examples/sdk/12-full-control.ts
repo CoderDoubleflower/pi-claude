@@ -4,7 +4,6 @@
  * Replace everything - no discovery, explicit configuration.
  */
 
-import { getModel } from "@earendil-works/pi-ai/compat";
 import {
 	createAgentSession,
 	createExtensionRuntime,
@@ -13,6 +12,7 @@ import {
 	SessionManager,
 	SettingsManager,
 } from "@doubleflower/pi-claude";
+import { getModel } from "@earendil-works/pi-ai/compat";
 
 const modelRuntime = await ModelRuntime.create({
 	authPath: "/tmp/my-agent/auth.json",

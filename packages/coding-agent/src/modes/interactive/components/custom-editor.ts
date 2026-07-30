@@ -14,6 +14,7 @@ function isEditorBorderLine(line: string): boolean {
  */
 export class CustomEditor extends Editor {
 	private keybindings: KeybindingsManager;
+	private readonly themeBorderColor: EditorTheme["borderColor"];
 	public actionHandlers: Map<AppKeybinding, () => void> = new Map();
 
 	// Special handlers that can be dynamically replaced
@@ -26,9 +27,14 @@ export class CustomEditor extends Editor {
 	constructor(tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager, options?: EditorOptions) {
 		super(tui, theme, options);
 		this.keybindings = keybindings;
+		this.themeBorderColor = theme.borderColor;
 	}
 
 	override render(width: number): string[] {
+		if (!this.getText().trimStart().startsWith("!")) {
+			this.borderColor = this.themeBorderColor;
+		}
+
 		if (width <= PROMPT_PREFIX_WIDTH) {
 			return super.render(width);
 		}
