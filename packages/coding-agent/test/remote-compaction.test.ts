@@ -13,6 +13,7 @@ import {
 	supportsRemoteCompactionProtocol,
 	type ResponseItem,
 } from "../src/core/remote-compaction/index.ts";
+import { stripImagesFromRemoteHistory } from "../src/core/remote-compaction/sanitize.ts";
 
 const tempDirs: string[] = [];
 
@@ -116,6 +117,34 @@ describe("remote compaction", () => {
 		expect(body.store).toBe(false);
 		expect(body.prompt_cache_key).toBe("session-1");
 		expect(body.input).toEqual([...input, { type: "compaction_trigger" }]);
+	});
+
+	it("removes image payloads before persisting remote history", () => {
+		const history: ResponseItem[] = [
+			{
+				type: "message",
+				role: "user",
+				content: [
+					{ type: "input_text", text: "inspect this" },
+					{ type: "input_image", image_url: "data:image/png;base64,large" },
+				],
+			},
+			{ type: "compaction", encrypted_content: "opaque" },
+		];
+		expect(stripImagesFromRemoteHistory(history)).toEqual([
+			{
+				type: "message",
+				role: "user",
+				content: [
+					{ type: "input_text", text: "inspect this" },
+					{
+						type: "input_text",
+						text: "image content omitted because the model does not support image input",
+					},
+				],
+			},
+			{ type: "compaction", encrypted_content: "opaque" },
+		]);
 	});
 
 	it("replaces normal request history with the persisted remote history", () => {
