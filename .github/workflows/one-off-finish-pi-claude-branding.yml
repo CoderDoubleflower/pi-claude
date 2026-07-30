@@ -1,0 +1,155 @@
+name: One-off final pi-claude branding audit
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+
+permissions:
+  contents: write
+
+jobs:
+  finish-branding:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: npm
+
+      - name: Apply final branding fixes
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str, expected: int = 1) -> None:
+              file = Path(path)
+              text = file.read_text(encoding="utf-8")
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f"{path}: expected {expected} occurrence(s), found {count}: {old!r}")
+              file.write_text(text.replace(old, new), encoding="utf-8")
+
+          project_trust = "packages/coding-agent/src/core/project-trust.ts"
+          replace(
+              project_trust,
+              'import { CONFIG_DIR_NAME } from "../config.ts";',
+              'import { APP_NAME, CONFIG_DIR_NAME } from "../config.ts";',
+          )
+          replace(
+              project_trust,
+              'This allows pi to load ${CONFIG_DIR_NAME} settings and resources, install missing project packages, and execute project extensions.',
+              'This allows ${APP_NAME} to load ${CONFIG_DIR_NAME} settings and resources, install missing project packages, and execute project extensions.',
+          )
+
+          first_time_setup = "packages/coding-agent/src/modes/interactive/components/first-time-setup.ts"
+          replace(
+              first_time_setup,
+              '"Opting in stores a tracking identifier in settings.json and enables anonymous\\nusage analytics. This helps us to better debug, reproduce, and resolve issues\\nand bugs within Pi. You can observe what is shared using /privacy and make\\nchanges anytime in settings.json."',
+              '`Opting in stores a tracking identifier in settings.json and enables anonymous\\nusage analytics. This helps us to better debug, reproduce, and resolve issues\\nand bugs within ${APP_NAME}. You can observe what is shared using /privacy and make\\nchanges anytime in settings.json.`',
+          )
+
+          interactive = "packages/coding-agent/src/modes/interactive/interactive-mode.ts"
+          replace(
+              interactive,
+              'return "tmux extended-keys-format is xterm. Pi works best with csi-u. Add `set -g extended-keys-format csi-u` to ~/.tmux.conf and restart tmux.";',
+              'return `tmux extended-keys-format is xterm. ${APP_NAME} works best with csi-u. Add \\`set -g extended-keys-format csi-u\\` to ~/.tmux.conf and restart tmux.`;',
+          )
+
+          system_prompt = "packages/coding-agent/src/core/system-prompt.ts"
+          replace(
+              system_prompt,
+              'import { getDocsPath, getExamplesPath, getReadmePath } from "../config.ts";',
+              'import { APP_NAME, getDocsPath, getExamplesPath, getReadmePath } from "../config.ts";',
+          )
+          replace(
+              system_prompt,
+              'operating inside pi, a coding agent harness',
+              'operating inside ${APP_NAME}, a coding agent harness',
+          )
+          replace(
+              system_prompt,
+              'Pi documentation (read only when the user asks about pi itself, its SDK, extensions, themes, skills, or TUI):',
+              '${APP_NAME} documentation (read only when the user asks about ${APP_NAME} itself, its SDK, extensions, themes, skills, or TUI):',
+          )
+          replace(
+              system_prompt,
+              '- Examples: ${examplesPath} (extensions, custom tools, SDK)\n- When reading pi docs or examples,',
+              '- Examples: ${examplesPath} (extensions, custom tools, SDK)\n- Documentation may mention upstream Pi APIs; always use \\`${APP_NAME}\\` for CLI commands\n- When reading ${APP_NAME} docs or examples,',
+          )
+          replace(system_prompt, 'pi packages (docs/packages.md)', '${APP_NAME} packages (docs/packages.md)')
+          replace(system_prompt, 'When working on pi topics,', 'When working on ${APP_NAME} topics,')
+          replace(
+              system_prompt,
+              'Always read pi .md files completely and follow links to related docs',
+              'Always read relevant .md files completely and follow links to related docs',
+          )
+
+          system_prompt_test = "packages/coding-agent/test/system-prompt.test.ts"
+          replace(
+              system_prompt_test,
+              'import { buildSystemPrompt } from "../src/core/system-prompt.ts";',
+              'import { APP_NAME } from "../src/config.ts";\nimport { buildSystemPrompt } from "../src/core/system-prompt.ts";',
+          )
+          replace(
+              system_prompt_test,
+              'test("instructs models to resolve pi docs and examples under absolute base paths", () => {',
+              'test("brands the harness and CLI while resolving docs under absolute base paths", () => {',
+          )
+          replace(
+              system_prompt_test,
+              'expect(prompt).toContain(\n\t\t\t\t"- When reading pi docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory",\n\t\t\t);',
+              'expect(prompt).toContain(`operating inside ${APP_NAME}, a coding agent harness`);\n\t\t\texpect(prompt).toContain(`always use \\`${APP_NAME}\\` for CLI commands`);\n\t\t\texpect(prompt).toContain(\n\t\t\t\t`- When reading ${APP_NAME} docs or examples, resolve docs/... under Additional docs and examples/... under Examples, not the current working directory`,\n\t\t\t);',
+          )
+
+          branding_test = "packages/coding-agent/test/command-branding.test.ts"
+          replace(
+              branding_test,
+              'import { afterEach, describe, expect, it, vi } from "vitest";',
+              'import { readFileSync } from "node:fs";\nimport { afterEach, describe, expect, it, vi } from "vitest";',
+          )
+          replace(
+              branding_test,
+              '\t});\n});\n',
+              '''\t});\n\n\tit("does not hardcode legacy Pi branding in user-visible prompts", () => {\n\t\tconst sourcePaths = [\n\t\t\t"../src/core/project-trust.ts",\n\t\t\t"../src/core/system-prompt.ts",\n\t\t\t"../src/modes/interactive/components/first-time-setup.ts",\n\t\t\t"../src/modes/interactive/interactive-mode.ts",\n\t\t];\n\t\tconst sources = sourcePaths\n\t\t\t.map((path) => readFileSync(new URL(path, import.meta.url), "utf-8"))\n\t\t\t.join("\\n");\n\n\t\texpect(sources).not.toContain("This allows pi to load");\n\t\texpect(sources).not.toContain("bugs within Pi.");\n\t\texpect(sources).not.toContain("Pi works best with csi-u");\n\t\texpect(sources).not.toContain("operating inside pi, a coding agent harness");\n\t\texpect(sources).not.toContain("restart pi");\n\t\texpect(sources).not.toContain("outside pi.");\n\t});\n});\n''',
+          )
+          PY
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build workspace
+        run: npm run build
+
+      - name: Run branding tests
+        run: npx vitest --run packages/coding-agent/test/command-branding.test.ts packages/coding-agent/test/system-prompt.test.ts packages/coding-agent/test/package-command-paths.test.ts
+
+      - name: Validate diff
+        run: git diff --check
+
+      - name: Commit fixes and remove one-off workflow
+        shell: bash
+        run: |
+          git rm .github/workflows/one-off-finish-pi-claude-branding.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/coding-agent/src/core/project-trust.ts \
+            packages/coding-agent/src/core/system-prompt.ts \
+            packages/coding-agent/src/modes/interactive/components/first-time-setup.ts \
+            packages/coding-agent/src/modes/interactive/interactive-mode.ts \
+            packages/coding-agent/test/command-branding.test.ts \
+            packages/coding-agent/test/system-prompt.test.ts
+          git commit -m "fix(coding-agent): finish pi-claude prompt branding"
+          git push origin HEAD:main
