@@ -70,6 +70,20 @@ jobs:
             packages/coding-agent/test/bash-command-rendering.test.ts \
             packages/coding-agent/test/claude-tool-display.test.ts
 
+      - name: TypeScript check
+        if: steps.migration.outputs.needed == 'true'
+        shell: bash
+        run: |
+          set +e
+          npx tsgo --noEmit > /tmp/tsgo.log 2>&1
+          status=$?
+          tail -n 120 /tmp/tsgo.log
+          exit $status
+
+      - name: Import check
+        if: steps.migration.outputs.needed == 'true'
+        run: npm run check:ts-imports
+
       - name: Run focused display tests
         if: steps.migration.outputs.needed == 'true'
         run: npm exec --workspace=@doubleflower/pi-claude vitest --run test/bash-command-rendering.test.ts test/claude-tool-display.test.ts
@@ -81,12 +95,6 @@ jobs:
       - name: Build repository
         if: steps.migration.outputs.needed == 'true'
         run: npm run build
-
-      - name: Type and import checks
-        if: steps.migration.outputs.needed == 'true'
-        run: |
-          npx tsgo --noEmit
-          npm run check:ts-imports
 
       - name: Remove one-off migration files
         if: steps.migration.outputs.needed == 'true'
