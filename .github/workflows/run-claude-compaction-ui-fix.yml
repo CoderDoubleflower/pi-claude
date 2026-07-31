@@ -58,11 +58,18 @@ jobs:
 
           path = Path('packages/coding-agent/test/claude-status.test.ts')
           text = path.read_text()
-          old = '\t\tpendingTools: new Map(),\n'
-          new = '\t\tpendingTools: new Map<string, never>(),\n'
-          if text.count(old) != 1:
-              raise RuntimeError(f'expected one pendingTools test initializer, found {text.count(old)}')
-          path.write_text(text.replace(old, new, 1))
+          replacements = {
+              '\t\tpendingTools: new Map(),\n': '\t\tpendingTools: new Map<string, never>(),\n',
+              'expect(line?.endsWith("Compacting conversation…")).toBe(true);': 'expect(line?.trimEnd().endsWith("Compacting conversation…")).toBe(true);',
+              'expect(collapsed[1]?.endsWith(" to expand)")).toBe(true);': 'expect(collapsed[1]?.trimEnd().endsWith(" to expand)")).toBe(true);',
+              'expect(expanded[1]).toBe("● Compact summary");': 'expect(expanded[1]?.trimEnd()).toBe("● Compact summary");',
+              'expect(expanded[2]).toBe("  ⎿  Retained summary");': 'expect(expanded[2]?.trimEnd()).toBe("  ⎿  Retained summary");',
+          }
+          for old, new in replacements.items():
+              if text.count(old) != 1:
+                  raise RuntimeError(f'expected one test fragment, found {text.count(old)}: {old}')
+              text = text.replace(old, new, 1)
+          path.write_text(text)
           PY
 
       - name: Install dependencies
