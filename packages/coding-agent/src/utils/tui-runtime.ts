@@ -24,6 +24,8 @@ interface CompatibleTuiRuntime {
 	TuiAltScreen?: AltScreenConstructor;
 }
 
+// Published pi-tui 0.83.0 exposes TUI, while the newer workspace exposes
+// TuiMainScreen/TuiAltScreen. Namespace access keeps both runtimes loadable.
 const compatibleRuntime = tuiRuntime as unknown as CompatibleTuiRuntime;
 let warnedAboutAltScreenFallback = false;
 
