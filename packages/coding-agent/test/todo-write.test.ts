@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { ExtensionContext } from "../src/core/extensions/types.ts";
 import { createAllToolDefinitions, createCodingTools } from "../src/core/tools/index.ts";
-import type { TodoItem, TodoWriteToolDetails } from "../src/core/tools/todo-write.ts";
+import {
+	getLatestTodoWriteTodos,
+	parseTodoWriteDetails,
+	type TodoItem,
+	type TodoWriteToolDetails,
+} from "../src/core/tools/todo-write.ts";
 import { initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
@@ -145,8 +150,15 @@ describe("TodoWrite tool", () => {
 		expect(result.details?.newTodos).toEqual(nextTodos);
 	});
 
-	it("renders the Claude-style checklist and active form", () => {
+	it("parses and restores the latest successful TodoWrite result", () => {
+		const details = { oldTodos: [], newTodos: initialTodos } satisfies TodoWriteToolDetails;
+		expect(parseTodoWriteDetails(details)).toEqual(details);
+		expect(getLatestTodoWriteTodos(createContext(details).sessionManager.getBranch())).toEqual(initialTodos);
+	});
+
+	it("does not render TodoWrite in the scrolling transcript", () => {
 		const definition = createAllToolDefinitions(process.cwd()).TodoWrite;
+		expect(definition.renderShell).toBe("self");
 		const component = definition.renderCall?.({ todos: initialTodos }, theme, {
 			args: { todos: initialTodos },
 			toolCallId: "todo-render",
@@ -162,11 +174,6 @@ describe("TodoWrite tool", () => {
 			isError: false,
 		});
 
-		const text = renderText(component);
-		expect(text).toContain("Update Todos");
-		expect(text).toContain("☒ Inspect the source");
-		expect(text).toContain("☐ Implementing TodoWrite");
-		expect(text).toContain("☐ Run validation");
-		expect(text).not.toContain("☐ Implement TodoWrite");
+		expect(renderText(component)).toBe("");
 	});
 });
