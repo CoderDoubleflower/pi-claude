@@ -6,6 +6,7 @@ import { CountdownTimer } from "./countdown-timer.ts";
 import { keyText } from "./keybinding-hints.ts";
 
 const LEGACY_DEFAULT_WORKING_MESSAGE = "Working...";
+const CLAUDE_COMPACTION_MESSAGE = "Compacting conversation…";
 
 function resolveWorkingMessage(message: string | undefined, defaultMessage: string): string {
 	if (message === undefined || message === LEGACY_DEFAULT_WORKING_MESSAGE) {
@@ -35,7 +36,7 @@ export class StatusIndicator extends Loader {
 	}
 
 	override render(width: number): string[] {
-		return super.render(width).map((line) => (line.startsWith(" ") ? line.slice(1) + " " : line));
+		return super.render(width).map((line) => (line.startsWith(" ") ? `${line.slice(1)} ` : line));
 	}
 
 	dispose(): void {
@@ -99,18 +100,14 @@ export class RetryStatusIndicator extends StatusIndicator {
 export type CompactionStatusReason = "manual" | "threshold" | "overflow";
 
 export class CompactionStatusIndicator extends StatusIndicator {
-	constructor(ui: TUI, reason: CompactionStatusReason) {
-		const cancelHint = `(${keyText("app.interrupt")} to cancel)`;
-		const label =
-			reason === "manual"
-				? `Compacting context... ${cancelHint}`
-				: `${reason === "overflow" ? "Context overflow detected, " : ""}Auto-compacting... ${cancelHint}`;
+	constructor(ui: TUI, _reason: CompactionStatusReason) {
 		super(
 			"compaction",
 			ui,
-			(spinner) => theme.fg("accent", spinner),
-			(text) => theme.fg("muted", text),
-			label,
+			colorClaudeWorkingText,
+			colorClaudeWorkingText,
+			CLAUDE_COMPACTION_MESSAGE,
+			CLAUDE_WORKING_INDICATOR,
 		);
 	}
 }

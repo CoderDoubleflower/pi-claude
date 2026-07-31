@@ -161,6 +161,7 @@ export type AgentSessionEvent =
 			result: CompactionResult | undefined;
 			aborted: boolean;
 			willRetry: boolean;
+			willContinue?: boolean;
 			errorMessage?: string;
 	  }
 	| { type: "auto_retry_start"; attempt: number; maxAttempts: number; delayMs: number; errorMessage: string }
@@ -2236,12 +2237,16 @@ export class AgentSession {
 			const retainedContextTooLarge =
 				continueAfterCompaction &&
 				shouldCompact(estimatedLlmContextTokensAfter, this.model?.contextWindow ?? 0, settings);
+			const hasQueuedContinuation = this.agent.hasQueuedMessages();
+			const willContinue =
+				!retainedContextTooLarge && (willRetry || continueAfterCompaction || hasQueuedContinuation);
 			this._emit({
 				type: "compaction_end",
 				reason,
 				result,
 				aborted: false,
 				willRetry,
+				willContinue,
 				...(retainedContextTooLarge
 					? {
 							errorMessage:
@@ -2257,13 +2262,8 @@ export class AgentSession {
 				if (lastMsg?.role === "assistant" && (lastMsg as AssistantMessage).stopReason === "error") {
 					this.agent.state.messages = messages.slice(0, -1);
 				}
-				return true;
 			}
-			if (continueAfterCompaction) return true;
-
-			// Auto-compaction can complete while follow-up/steering/custom messages are waiting.
-			// Continue once so queued messages are delivered.
-			return this.agent.hasQueuedMessages();
+			return willContinue;
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : "compaction failed";
 			if (started) {
@@ -3264,12 +3264,21 @@ export class AgentSession {
 			}
 
 			if (!hasPostCompactionUsage) {
-				return { tokens: null, contextWindow, percent: null };
+				const estimatedTokens = estimateLlmContextTokens({
+					systemPrompt: this.agent.state.systemPrompt,
+					messages: convertToLlm(this.messages),
+					tools: this.agent.state.tools,
+				}).tokens;
+				return {
+					tokens: estimatedTokens,
+					contextWindow,
+					percent: Math.min(100, (estimatedTokens / contextWindow) * 100),
+				};
 			}
 		}
 
 		const estimate = estimateContextTokens(this.messages);
-		const percent = (estimate.tokens / contextWindow) * 100;
+		const percent = Math.min(100, (estimate.tokens / contextWindow) * 100);
 
 		return {
 			tokens: estimate.tokens,

@@ -1,5 +1,8 @@
+import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
 import type { TUI } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import type { AgentSessionEvent } from "../src/core/agent-session.ts";
+import { createCompactionSummaryMessage } from "../src/core/messages.ts";
 import type { CustomEntry } from "../src/core/session-manager.ts";
 import {
 	CLAUDE_TURN_DURATION_ENTRY_TYPE,
@@ -11,7 +14,11 @@ import {
 	formatClaudeTurnDuration,
 	shouldShowClaudeTurnDuration,
 } from "../src/modes/interactive/components/claude-working.ts";
-import { WorkingStatusIndicator } from "../src/modes/interactive/components/status-indicator.ts";
+import { CompactionSummaryMessageComponent } from "../src/modes/interactive/components/compaction-summary-message.ts";
+import {
+	CompactionStatusIndicator,
+	WorkingStatusIndicator,
+} from "../src/modes/interactive/components/status-indicator.ts";
 import { InteractiveMode } from "../src/modes/interactive/interactive-mode.ts";
 import { getEditorTheme, initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
@@ -107,6 +114,133 @@ describe("Claude status display", () => {
 
 		expect(getClaudeTurnDurationMs(entry)).toBe(66_000);
 		expect(getClaudeTurnDurationMs({ ...entry, data: { durationMs: -1 } })).toBeUndefined();
+	});
+
+	test("matches Claude Code's active compaction spinner", () => {
+		initTheme("dark");
+		const indicator = new CompactionStatusIndicator(createTui(), "threshold");
+		const line = indicator
+			.render(60)
+			.map(stripAnsi)
+			.find((entry) => entry.trim().length > 0);
+		indicator.dispose();
+
+		expect(indicator.kind).toBe("compaction");
+		expect(line?.trimEnd().endsWith("Compacting conversation…")).toBe(true);
+		expect(line?.startsWith(" ")).toBe(false);
+	});
+
+	test("matches Claude Code's compact summary transcript row", () => {
+		initTheme("dark");
+		const message = createCompactionSummaryMessage("Retained summary", 120_000, new Date(0).toISOString());
+		const component = new CompactionSummaryMessageComponent(message);
+		const collapsed = component.render(80).map(stripAnsi);
+
+		expect(collapsed[0]).toBe("");
+		expect(collapsed[1]?.startsWith("● Compact summary (")).toBe(true);
+		expect(collapsed[1]?.trimEnd().endsWith(" to expand)")).toBe(true);
+		expect(collapsed.join(" ")).not.toContain("[compaction]");
+		expect(collapsed.join(" ")).not.toContain("120,000");
+
+		component.setExpanded(true);
+		const expanded = component.render(80).map(stripAnsi);
+		expect(expanded[1]?.trimEnd()).toBe("● Compact summary");
+		expect(expanded[2]?.trimEnd()).toBe("  ⎿  Retained summary");
+	});
+});
+
+describe("Interactive task lifecycle", () => {
+	test("finalizes duration and terminal progress only when the outer task settles", async () => {
+		vi.spyOn(Date, "now").mockReturnValue(40_001);
+		const progress: boolean[] = [];
+		const clearedKinds: Array<string | undefined> = [];
+		const renderedEntries: CustomEntry[] = [];
+		const persistedEntry: CustomEntry = {
+			type: "custom",
+			customType: CLAUDE_TURN_DURATION_ENTRY_TYPE,
+			data: { durationMs: 40_001 },
+			id: "duration",
+			parentId: null,
+			timestamp: new Date(0).toISOString(),
+		};
+		const assistantMessage = {
+			role: "assistant",
+			content: [],
+			api: "anthropic-messages",
+			provider: "anthropic",
+			model: "claude",
+			usage: {
+				input: 1,
+				output: 1,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 2,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			stopReason: "stop",
+			timestamp: 1,
+		} as unknown as AssistantMessage;
+
+		type LifecycleHost = {
+			isInitialized: boolean;
+			footer: { invalidate(): void };
+			settingsManager: { getShowTerminalProgress(): boolean };
+			ui: { terminal: { setProgress(active: boolean): void }; requestRender(): void };
+			agentStartedAt: number | undefined;
+			lastAgentEndAssistantMessage: AssistantMessage | undefined;
+			streamingComponent: undefined;
+			streamingMessage: undefined;
+			pendingTools: Map<string, never>;
+			resetToolActivityState(): void;
+			clearStatusIndicator(kind?: string): void;
+			sessionManager: {
+				appendCustomEntry(customType: string, data: unknown): string;
+				getEntry(id: string): CustomEntry | undefined;
+			};
+			addCustomEntryToChat(entry: CustomEntry): void;
+			checkShutdownRequested(): Promise<void>;
+		};
+
+		const host: LifecycleHost = {
+			isInitialized: true,
+			footer: { invalidate() {} },
+			settingsManager: { getShowTerminalProgress: () => true },
+			ui: {
+				terminal: { setProgress: (active) => progress.push(active) },
+				requestRender() {},
+			},
+			agentStartedAt: 0,
+			lastAgentEndAssistantMessage: undefined,
+			streamingComponent: undefined,
+			streamingMessage: undefined,
+			pendingTools: new Map<string, never>(),
+			resetToolActivityState() {},
+			clearStatusIndicator: (kind) => clearedKinds.push(kind),
+			sessionManager: {
+				appendCustomEntry: () => "duration",
+				getEntry: () => persistedEntry,
+			},
+			addCustomEntryToChat: (entry) => renderedEntries.push(entry),
+			async checkShutdownRequested() {},
+		};
+		const handleEvent = (
+			InteractiveMode.prototype as unknown as {
+				handleEvent(this: LifecycleHost, event: AgentSessionEvent): Promise<void>;
+			}
+		).handleEvent;
+
+		await handleEvent.call(host, { type: "agent_end", messages: [assistantMessage], willRetry: false });
+		expect(progress).toEqual([]);
+		expect(clearedKinds).toEqual([]);
+		expect(host.agentStartedAt).toBe(0);
+		expect(host.lastAgentEndAssistantMessage).toBe(assistantMessage);
+
+		await handleEvent.call(host, { type: "agent_settled" });
+		expect(progress).toEqual([false]);
+		expect(clearedKinds).toEqual([undefined]);
+		expect(host.agentStartedAt).toBeUndefined();
+		expect(host.lastAgentEndAssistantMessage).toBeUndefined();
+		expect(renderedEntries).toEqual([persistedEntry]);
 	});
 });
 
