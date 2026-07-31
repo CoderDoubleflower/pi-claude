@@ -1,0 +1,76 @@
+name: Claude tool display migration verifier
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  migrate-and-verify:
+    if: github.head_ref == 'feat/claude-tool-display-parity'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Check out feature branch
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: npm
+
+      - name: Apply migration
+        run: python3 scripts/apply-claude-tool-display-parity.py
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Format changed files
+        run: |
+          npx biome check --write \
+            packages/coding-agent/src/core/tools/index.ts \
+            packages/coding-agent/src/core/tools/bash.ts \
+            packages/coding-agent/src/core/tools/read.ts \
+            packages/coding-agent/src/core/tools/grep.ts \
+            packages/coding-agent/src/core/tools/find.ts \
+            packages/coding-agent/src/core/tools/ls.ts \
+            packages/coding-agent/src/modes/interactive/components/tool-activity-group.ts \
+            packages/coding-agent/src/modes/interactive/interactive-mode.ts \
+            packages/coding-agent/test/bash-command-rendering.test.ts \
+            packages/coding-agent/test/claude-tool-display.test.ts
+
+      - name: Run focused display tests
+        run: npm exec --workspace=@doubleflower/pi-claude vitest --run test/bash-command-rendering.test.ts test/claude-tool-display.test.ts
+
+      - name: Run coding-agent tests
+        run: npm test --workspace=@doubleflower/pi-claude
+
+      - name: Build repository
+        run: npm run build
+
+      - name: Type and import checks
+        run: |
+          npx tsgo --noEmit
+          npm run check:ts-imports
+
+      - name: Remove one-off migration files
+        run: rm -f scripts/apply-claude-tool-display-parity.py .github/workflows/apply-claude-tool-display-parity.yml
+
+      - name: Commit implementation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "feat(coding-agent): match Claude Code tool display strategy"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
