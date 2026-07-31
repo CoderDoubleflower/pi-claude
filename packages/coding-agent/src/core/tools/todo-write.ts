@@ -1,11 +1,11 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Text } from "@earendil-works/pi-tui";
 import { type Static, Type } from "typebox";
-import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import type { ExtensionContext, ToolDefinition } from "../extensions/types.ts";
+import type { SessionEntry } from "../session-manager.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 
-const TODO_WRITE_TOOL_NAME = "TodoWrite";
+export const TODO_WRITE_TOOL_NAME = "TodoWrite";
 
 const todoStatusSchema = Type.Union([Type.Literal("pending"), Type.Literal("in_progress"), Type.Literal("completed")]);
 
@@ -131,44 +131,30 @@ function parseTodos(value: unknown): TodoItem[] | undefined {
 	return todos;
 }
 
-function getCurrentTodos(ctx: ExtensionContext): TodoItem[] {
-	const branch = ctx.sessionManager.getBranch();
-	for (let index = branch.length - 1; index >= 0; index--) {
-		const entry = branch[index];
-		if (entry?.type !== "message") continue;
-
-		const message = entry.message;
-		if (message.role !== "toolResult" || message.toolName !== TODO_WRITE_TOOL_NAME || message.isError) continue;
-
-		const details = message.details as Record<string, unknown> | undefined;
-		const newTodos = parseTodos(details?.newTodos);
-		if (!newTodos) continue;
-
-		return newTodos.every((todo) => todo.status === "completed") ? [] : newTodos;
-	}
-	return [];
+export function parseTodoWriteDetails(value: unknown): TodoWriteToolDetails | undefined {
+	if (typeof value !== "object" || value === null) return undefined;
+	const record = value as Record<string, unknown>;
+	const oldTodos = parseTodos(record.oldTodos);
+	const newTodos = parseTodos(record.newTodos);
+	if (!oldTodos || !newTodos) return undefined;
+	return { oldTodos, newTodos };
 }
 
-function formatTodoCall(args: TodoWriteToolInput | undefined, theme: Theme): string {
-	const title = theme.fg("toolTitle", theme.bold("Update Todos"));
-	const todos = args?.todos ?? [];
-
-	if (todos.length === 0) {
-		return `${title}\n${theme.fg("muted", "  ⎿  Cleared todo list")}`;
+export function getLatestTodoWriteTodos(entries: readonly SessionEntry[]): TodoItem[] | undefined {
+	for (let index = entries.length - 1; index >= 0; index--) {
+		const entry = entries[index];
+		if (entry?.type !== "message") continue;
+		const message = entry.message;
+		if (message.role !== "toolResult" || message.toolName !== TODO_WRITE_TOOL_NAME || message.isError) continue;
+		const details = parseTodoWriteDetails(message.details);
+		if (details) return cloneTodos(details.newTodos);
 	}
+	return undefined;
+}
 
-	const lines = todos.map((todo, index) => {
-		const prefix = index === 0 ? "  ⎿  " : "     ";
-		if (todo.status === "completed") {
-			return `${prefix}${theme.fg("success", "☒")} ${theme.fg("dim", todo.content)}`;
-		}
-		if (todo.status === "in_progress") {
-			return `${prefix}${theme.fg("toolRunning", "☐")} ${theme.fg("text", todo.activeForm)}`;
-		}
-		return `${prefix}${theme.fg("muted", "☐")} ${theme.fg("muted", todo.content)}`;
-	});
-
-	return `${title}\n${lines.join("\n")}`;
+function getCurrentTodos(ctx: ExtensionContext): TodoItem[] {
+	const todos = getLatestTodoWriteTodos(ctx.sessionManager.getBranch()) ?? [];
+	return todos.length > 0 && todos.every((todo) => todo.status === "completed") ? [] : todos;
 }
 
 export function createTodoWriteToolDefinition(): ToolDefinition<typeof todoWriteSchema, TodoWriteToolDetails> {
@@ -180,6 +166,7 @@ export function createTodoWriteToolDefinition(): ToolDefinition<typeof todoWrite
 		parameters: todoWriteSchema,
 		constrainedSampling: { type: "json_schema", strict: "prefer" },
 		executionMode: "sequential",
+		renderShell: "self",
 		async execute(_toolCallId, { todos }, signal, _onUpdate, ctx) {
 			if (signal?.aborted) {
 				throw new Error("Operation aborted");
@@ -196,9 +183,9 @@ export function createTodoWriteToolDefinition(): ToolDefinition<typeof todoWrite
 				},
 			};
 		},
-		renderCall(args, theme, context) {
+		renderCall(_args, _theme, context) {
 			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-			text.setText(formatTodoCall(args, theme));
+			text.setText("");
 			return text;
 		},
 		renderResult(result, _options, theme, context) {
