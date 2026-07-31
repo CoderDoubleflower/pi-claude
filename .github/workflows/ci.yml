@@ -83,29 +83,7 @@ jobs:
                   print()
           PY
 
-          cat > /tmp/adapt-markdown-tests.sh <<'ADAPT'
-          sed -i "s/availableWidth: 78/availableWidth: 77/g" packages/coding-agent/test/assistant-message.test.ts
-          sed -i "s/answer (78)/answer (77)/g" packages/coding-agent/test/assistant-message.test.ts
-          sed -i "s/answer (58)/answer (57)/g" packages/coding-agent/test/assistant-message.test.ts
-          sed -i "s/\[78, 58\]/[77, 57]/g" packages/coding-agent/test/assistant-message.test.ts
-          sed -i "s/availableWidth: 78/availableWidth: 77/g" packages/coding-agent/test/user-message.test.ts
-          ADAPT
-
-          awk '
-            BEGIN {
-              while ((getline line < "/tmp/adapt-markdown-tests.sh") > 0) {
-                adaptation = adaptation line ORS
-              }
-            }
-            /^unresolved=/ { printf "%s", adaptation }
-            { print }
-          ' /tmp/integrate-markdown-transformer.sh > /tmp/integrate-markdown-transformer.next.sh
-          mv /tmp/integrate-markdown-transformer.next.sh /tmp/integrate-markdown-transformer.sh
-
-          sed -i '/packages\/tui\/test\/markdown.test.ts/d' /tmp/integrate-markdown-transformer.sh
-          sed -i 's#packages/coding-agent/test/extensions-discovery.test.ts \\#packages/coding-agent/test/extensions-discovery.test.ts#' /tmp/integrate-markdown-transformer.sh
-          sed -i '/^npm run check:package-smoke/i npm test --workspace=@earendil-works/pi-tui' /tmp/integrate-markdown-transformer.sh
-
-          rm -f .github/markdown-transformer-retry
+          node .github/adapt-markdown-integration.mjs /tmp/integrate-markdown-transformer.sh
+          rm -f .github/adapt-markdown-integration.mjs .github/markdown-transformer-retry
           chmod +x /tmp/integrate-markdown-transformer.sh
           bash /tmp/integrate-markdown-transformer.sh
