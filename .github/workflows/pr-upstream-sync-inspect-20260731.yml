@@ -1,0 +1,53 @@
+name: Inspect upstream sync 2026-07-31
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    if: github.event.pull_request.title == 'chore: sync upstream Pi through 74caa26'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Inspect three-way merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/earendil-works/pi.git
+          git fetch upstream main
+
+          set +e
+          git merge --no-commit --no-ff upstream/main
+          merge_status=$?
+          set -e
+
+          echo "MERGE_STATUS=${merge_status}"
+          echo "UPSTREAM_HEAD=$(git rev-parse upstream/main)"
+          echo "BASE_HEAD=$(git rev-parse HEAD)"
+          echo "CONFLICT_FILES_BEGIN"
+          git diff --name-only --diff-filter=U || true
+          echo "CONFLICT_FILES_END"
+          echo "MERGED_STATUS_BEGIN"
+          git status --short
+          echo "MERGED_STATUS_END"
+
+          if [ "${merge_status}" -ne 0 ]; then
+            echo "CONFLICT_DETAILS_BEGIN"
+            for file in $(git diff --name-only --diff-filter=U); do
+              echo "===== ${file} ====="
+              git checkout --conflict=merge -- "$file" || true
+              grep -n -B 8 -A 20 -E '^(<<<<<<<|=======|>>>>>>>)' "$file" || true
+            done
+            echo "CONFLICT_DETAILS_END"
+            exit 1
+          fi
