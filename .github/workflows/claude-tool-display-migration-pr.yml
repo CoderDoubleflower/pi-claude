@@ -33,6 +33,7 @@ jobs:
           python3 scripts/apply-claude-tool-display-parity.py
           python3 scripts/fix-claude-tool-display-generated.py
           python3 scripts/repair-claude-tool-display-source.py
+          python3 scripts/repair-claude-bash-preview-tests.py
 
       - name: Install dependencies
         run: npm ci --ignore-scripts
@@ -66,7 +67,7 @@ jobs:
           npm run check:ts-imports
 
       - name: Remove one-off migration files
-        run: rm -f scripts/apply-claude-tool-display-parity.py scripts/fix-claude-tool-display-generated.py scripts/repair-claude-tool-display-source.py .github/workflows/apply-claude-tool-display-parity.yml .github/claude-tool-display-rerun
+        run: rm -f scripts/apply-claude-tool-display-parity.py scripts/fix-claude-tool-display-generated.py scripts/repair-claude-tool-display-source.py scripts/repair-claude-bash-preview-tests.py .github/workflows/apply-claude-tool-display-parity.yml .github/claude-tool-display-rerun
 
       - name: Commit implementation
         env:
