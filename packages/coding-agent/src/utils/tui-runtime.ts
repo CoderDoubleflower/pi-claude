@@ -1,11 +1,7 @@
-import * as tuiRuntime from "@earendil-works/pi-tui";
 import type { Terminal, TUI } from "@earendil-works/pi-tui";
+import * as tuiRuntime from "@earendil-works/pi-tui";
 
-type MainScreenConstructor = new (
-	terminal: Terminal,
-	showHardwareCursor?: boolean,
-	logDirectory?: string,
-) => TUI;
+type MainScreenConstructor = new (terminal: Terminal, showHardwareCursor?: boolean, logDirectory?: string) => TUI;
 
 interface AltScreenOptions {
 	openUrl?: (url: string) => void;
@@ -39,11 +35,7 @@ function getMainScreenConstructor(): MainScreenConstructor {
 	return Constructor;
 }
 
-export function createMainScreenTui(
-	terminal: Terminal,
-	showHardwareCursor?: boolean,
-	logDirectory?: string,
-): TUI {
+export function createMainScreenTui(terminal: Terminal, showHardwareCursor?: boolean, logDirectory?: string): TUI {
 	const Constructor = getMainScreenConstructor();
 	return new Constructor(terminal, showHardwareCursor, logDirectory);
 }

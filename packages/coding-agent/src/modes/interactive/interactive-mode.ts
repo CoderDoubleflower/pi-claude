@@ -37,8 +37,6 @@ import {
 	Text,
 	TruncatedText,
 	type TUI,
-	TuiAltScreen,
-	TuiMainScreen,
 	visibleWidth,
 } from "@earendil-works/pi-tui";
 import chalk from "chalk";
@@ -104,6 +102,7 @@ import { getCwdRelativePath } from "../../utils/paths.ts";
 import { getPiUserAgent } from "../../utils/pi-user-agent.ts";
 import { killTrackedDetachedChildren } from "../../utils/shell.ts";
 import { ensureTool } from "../../utils/tools-manager.ts";
+import { createAltScreenTui, createMainScreenTui } from "../../utils/tui-runtime.ts";
 import { checkForNewPiVersion, type LatestPiRelease } from "../../utils/version-check.ts";
 import { ArminComponent } from "./components/armin.ts";
 import { AssistantMessageComponent } from "./components/assistant-message.ts";
@@ -338,9 +337,9 @@ interface InteractiveTuiOptions {
 export function createInteractiveTui(options: InteractiveTuiOptions): TUI {
 	const terminal = options.terminal ?? new ProcessTerminal();
 	if (options.alt) {
-		return new TuiAltScreen(terminal, options.showHardwareCursor, options.logDirectory, { openUrl: openBrowser });
+		return createAltScreenTui(terminal, options.showHardwareCursor, options.logDirectory, { openUrl: openBrowser });
 	}
-	return new TuiMainScreen(terminal, options.showHardwareCursor, options.logDirectory);
+	return createMainScreenTui(terminal, options.showHardwareCursor, options.logDirectory);
 }
 
 export class InteractiveMode {
