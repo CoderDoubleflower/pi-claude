@@ -1,0 +1,77 @@
+name: One-off runtime compatibility hotfix v2
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.event.pull_request.title == 'Trigger runtime compatibility hotfix v2' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: hotfix/npm-tui-runtime-compat
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Apply compatibility patch
+        run: |
+          node scripts/apply-runtime-compat-hotfix.mjs
+          rm scripts/apply-runtime-compat-hotfix.mjs
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build packages
+        run: npm run build
+
+      - name: Static checks
+        run: npm run check
+
+      - name: Verify packed npm installation
+        run: npm run check:package-smoke
+
+      - name: Verify compatibility wiring
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'import * as tuiRuntime from "@earendil-works/pi-tui";' packages/coding-agent/src/utils/tui-runtime.ts
+          grep -Fq 'estimateLlmContextTokens' packages/coding-agent/src/utils/llm-context-estimate.ts
+          ! grep -Fq 'estimateContextTokens as estimateLlmContextTokens' packages/coding-agent/src/core/agent-session.ts
+          ! grep -Fq 'TuiMainScreen' packages/coding-agent/src/cli/startup-ui.ts
+          ! grep -Fq 'TuiMainScreen' packages/coding-agent/src/cli/config-selector.ts
+          ! grep -Fq $'\tTuiMainScreen,' packages/coding-agent/src/modes/interactive/interactive-mode.ts
+          ! grep -Fq $'\tTuiAltScreen,' packages/coding-agent/src/modes/interactive/interactive-mode.ts
+
+      - name: Commit verified hotfix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add \
+            package.json \
+            packages/coding-agent/CHANGELOG.md \
+            packages/coding-agent/src/cli/startup-ui.ts \
+            packages/coding-agent/src/cli/config-selector.ts \
+            packages/coding-agent/src/core/agent-session.ts \
+            packages/coding-agent/src/modes/interactive/interactive-mode.ts \
+            packages/coding-agent/src/utils/tui-runtime.ts \
+            packages/coding-agent/src/utils/llm-context-estimate.ts \
+            scripts/check-coding-agent-package-smoke.mjs \
+            scripts/apply-runtime-compat-hotfix.mjs
+
+          git diff --exit-code
+          git diff --cached --check
+          git commit -m "fix: support published runtime packages in npm install"
+          git push origin HEAD:hotfix/npm-tui-runtime-compat
