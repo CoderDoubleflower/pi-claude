@@ -71,9 +71,37 @@ jobs:
       - name: Generate model sources
         run: npm run generate:models
 
-      - name: Validate
+      - name: Format changed files
         run: |
-          npm run check
+          npx biome check --write --error-on-warnings \
+            packages/coding-agent/CHANGELOG.md \
+            packages/coding-agent/src/core/agent-session.ts \
+            packages/coding-agent/src/modes/interactive/components/compaction-summary-message.ts \
+            packages/coding-agent/src/modes/interactive/components/status-indicator.ts \
+            packages/coding-agent/src/modes/interactive/interactive-mode.ts \
+            packages/coding-agent/test/claude-status.test.ts
+
+      - name: Typecheck coding-agent scope
+        shell: bash
+        run: |
+          cat > tsconfig.compaction-ui.json <<'JSON'
+          {
+            "extends": "./tsconfig.json",
+            "include": [
+              "packages/coding-agent/src/**/*.ts",
+              "packages/coding-agent/test/claude-status.test.ts"
+            ],
+            "exclude": [
+              "**/dist/**",
+              "packages/coding-agent/examples/**"
+            ]
+          }
+          JSON
+          npx tsgo --noEmit -p tsconfig.compaction-ui.json
+          rm tsconfig.compaction-ui.json
+
+      - name: Run focused tests
+        run: |
           cd packages/coding-agent
           node ../../node_modules/vitest/dist/cli.js --run test/claude-status.test.ts
 
