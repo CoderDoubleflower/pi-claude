@@ -39,6 +39,13 @@ jobs:
           node-version: 22.19.0
           cache: npm
 
+      - name: Install system dependencies
+        if: steps.migration.outputs.needed == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ripgrep fd-find
+          sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd
+
       - name: Apply migration
         if: steps.migration.outputs.needed == 'true'
         run: |
