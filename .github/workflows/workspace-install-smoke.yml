@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - automation/workspace-install-20260731
+  pull_request:
+    branches:
+      - automation/workspace-install-base-20260731
 
 permissions:
   contents: read
