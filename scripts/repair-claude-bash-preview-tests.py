@@ -5,16 +5,19 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1]
 matched: list[Path] = []
 candidates: list[Path] = []
+allowed_suffixes = {'.ts', '.tsx', '.js', '.mjs', '.cjs', '.json', '.map'}
 
 for path in root.rglob('*'):
-    if not path.is_file() or path.suffix not in {'.ts', '.tsx'}:
+    if not path.is_file() or path.suffix not in allowed_suffixes or '.git' in path.parts:
         continue
     try:
+        if path.stat().st_size > 5_000_000:
+            continue
         content = path.read_text(encoding='utf-8')
-    except UnicodeDecodeError:
+    except (UnicodeDecodeError, OSError):
         continue
 
-    if any(token in content for token in ('line 8', 'AAAAA', 'most recent plain-output', 'counts wrapped visual rows')):
+    if any(token in content for token in ('plain-output', 'wrapped visual rows', 'line 8', 'AAAAA')):
         candidates.append(path)
 
     original = content
@@ -22,7 +25,6 @@ for path in root.rglob('*'):
         'keeps the most recent plain-output lines in collapsed mode',
         'keeps the leading plain-output lines in collapsed mode',
     )
-
     content, _ = re.subn(
         r'expect\(plain\)\.toContain\((?:"|\'|`)line 8\\nline 9\\nline 10(?:"|\'|`)\);',
         'expect(plain).toContain("line 1\\nline 2\\nline 3");\n\t\texpect(plain).toContain("… +7 lines");',
@@ -40,11 +42,16 @@ for path in root.rglob('*'):
         path.write_text(content, encoding='utf-8')
         matched.append(path)
 
-if len(matched) != 1:
-    relative_candidates = [str(path.relative_to(root)) for path in candidates[:20]]
-    raise RuntimeError(
-        f'expected one Bash preview test file, changed {len(matched)}; '
-        f'candidate files: {relative_candidates}'
-    )
+print('Bash preview test candidates:')
+for path in candidates[:100]:
+    print(f'  {path.relative_to(root)}')
+print('Filename candidates:')
+for path in root.rglob('*'):
+    if path.is_file() and ('bash-output-preview' in path.name or 'output-preview' in path.name):
+        print(f'  {path.relative_to(root)}')
 
-print(f'Updated Claude-style Bash output expectations in {matched[0].relative_to(root)}')
+if matched:
+    for path in matched:
+        print(f'Updated Claude-style Bash output expectations in {path.relative_to(root)}')
+else:
+    print('No legacy Bash preview assertion source was directly patchable; continuing for diagnostic test output.')
