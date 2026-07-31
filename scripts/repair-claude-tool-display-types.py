@@ -15,6 +15,13 @@ def write(path: str, content: str) -> None:
     (ROOT / path).write_text(content, encoding="utf-8")
 
 
+def replace_region(path: str, start: str, end: str, replacement: str) -> None:
+    content = read(path)
+    start_index = content.index(start)
+    end_index = content.index(end, start_index)
+    write(path, content[:start_index] + replacement + content[end_index:])
+
+
 # Keep the no-match Grep result's content discriminant literal. Without this,
 # the Promise resolve expression widens `type` to string before the ToolResult
 # assertion and tsgo correctly rejects it.
@@ -97,8 +104,79 @@ if group.count(old_group) != 1:
 write(group_path, group.replace(old_group, new_group, 1))
 
 
+# Preserve the existing Read tool result contract: ordinary successful reads
+# historically return details=undefined. Derive UI metadata from content and
+# reserve details for actual truncation information.
+read_path = "packages/coding-agent/src/core/tools/read.ts"
+read_tool = read(read_path)
+read_tool, image_details_count = re.subn(
+    r'\n\s*details = \{\s*kind: "image",\s*imageMimeType: processed\.ok \? processed\.mimeType : mimeType,\s*imageBytes: buffer\.byteLength,\s*\};',
+    '',
+    read_tool,
+    count=1,
+    flags=re.S,
+)
+read_tool, text_details_count = re.subn(
+    r'\n\s*details = \{\s*\.\.\.details,\s*kind: "text",\s*linesRead: truncation\.firstLineExceedsLimit \? 0 : truncation\.outputLines,\s*\};',
+    '',
+    read_tool,
+    count=1,
+    flags=re.S,
+)
+if image_details_count != 1 or text_details_count != 1:
+    raise RuntimeError(
+        f"expected one image and text Read metadata assignment, found image={image_details_count}, text={text_details_count}"
+    )
+write(read_path, read_tool)
+replace_region(
+    read_path,
+    "function formatReadResult(",
+    "export function createReadToolDefinition",
+    r'''function formatReadResult(
+	result: { content: (TextContent | ImageContent)[]; details?: ReadToolDetails },
+	theme: Theme,
+	isError: boolean,
+): string {
+	const textOutput = result.content
+		.filter((content): content is TextContent => content.type === "text")
+		.map((content) => content.text)
+		.join("\n")
+		.trim();
+	if (isError) return textOutput ? `\n${theme.fg("error", textOutput)}` : "";
+
+	const image = result.content.find((content): content is ImageContent => content.type === "image");
+	const details = result.details;
+	let summary: string;
+	if (image) {
+		const approximateBytes = Math.floor((image.data.length * 3) / 4);
+		summary = `Read image [${image.mimeType}] (${formatSize(approximateBytes)})`;
+	} else {
+		const linesRead = details?.linesRead ?? (textOutput === "" ? 0 : textOutput.split("\n").length);
+		summary = `Read ${linesRead} ${linesRead === 1 ? "line" : "lines"}`;
+	}
+
+	let text = `\n${theme.fg("toolOutput", summary)}`;
+	const truncation = details?.truncation;
+	if (truncation?.truncated) {
+		if (truncation.firstLineExceedsLimit) {
+			text += `\n${theme.fg("warning", `[First line exceeds ${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit]`)}`;
+		} else if (truncation.truncatedBy === "lines") {
+			text += `\n${theme.fg("warning", `[Truncated: read ${truncation.outputLines} of ${truncation.totalLines} lines]`)}`;
+		} else {
+			text += `\n${theme.fg("warning", `[Truncated at ${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)}]`)}`;
+		}
+	}
+	return text;
+}
+
+''',
+)
+
+
 # Agent tool results may contain SDK-only file blocks. The terminal renderer
-# supports text and images, so narrow at the UI boundary.
+# supports text and images, so narrow at the UI boundary. The historical
+# rendering regression tests intentionally borrow class methods onto a minimal
+# object, so all newly introduced UI helpers need runtime-safe fallbacks.
 interactive_path = "packages/coding-agent/src/modes/interactive/interactive-mode.ts"
 interactive = read(interactive_path)
 old = '''\t\t\t\t\tcomponent.updateResult({ ...event.result, isError: event.isError });'''
@@ -115,6 +193,39 @@ new = '''\t\t\t\t\tconst displayContent = event.result.content.filter(
 \t\t\t\t\t});'''
 if interactive.count(old) != 1:
     raise RuntimeError(f"expected one tool_execution_end result update, found {interactive.count(old)}")
-write(interactive_path, interactive.replace(old, new, 1))
+interactive = interactive.replace(old, new, 1)
 
-print("Claude tool display type contracts repaired")
+# Guard helper calls used by borrowed methods in regression tests.
+for method in (
+    "resetToolActivityState",
+    "breakToolActivityGroup",
+    "markToolActivityStarted",
+    "markToolActivityCompleted",
+    "updateToolActivityArgs",
+):
+    pattern = rf'(?P<indent>^[ \t]*)this\.{method}\((?P<args>[^;]*)\);'
+    replacement = rf'\g<indent>if (typeof this.{method} === "function") this.{method}(\g<args>);'
+    interactive, _ = re.subn(pattern, replacement, interactive, flags=re.M)
+
+content_call = 'this.addToolExecutionToChat(content.name, content.id, content.arguments, component);'
+content_fallback = '''if (typeof this.addToolExecutionToChat === "function") {
+\t\t\t\t\t\tthis.addToolExecutionToChat(content.name, content.id, content.arguments, component);
+\t\t\t\t\t} else {
+\t\t\t\t\t\tthis.chatContainer.addChild(component);
+\t\t\t\t\t}'''
+if content_call not in interactive:
+    raise RuntimeError("expected at least one content tool activity insertion")
+interactive = interactive.replace(content_call, content_fallback)
+
+event_call = 'this.addToolExecutionToChat(event.toolName, event.toolCallId, event.args, component);'
+event_fallback = '''if (typeof this.addToolExecutionToChat === "function") {
+\t\t\t\t\tthis.addToolExecutionToChat(event.toolName, event.toolCallId, event.args, component);
+\t\t\t\t} else {
+\t\t\t\t\tthis.chatContainer.addChild(component);
+\t\t\t\t}'''
+if event_call not in interactive:
+    raise RuntimeError("expected one event tool activity insertion")
+interactive = interactive.replace(event_call, event_fallback)
+write(interactive_path, interactive)
+
+print("Claude tool display type and compatibility contracts repaired")
