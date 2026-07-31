@@ -130,3 +130,11 @@ describe("Claude-style tool presentation", () => {
 behavior_script = root / "scripts/repair-claude-tool-display-behavior.py"
 exec(compile(behavior_script.read_text(encoding="utf-8"), str(behavior_script), "exec"))
 behavior_script.unlink()
+
+index_path = root / "packages/coding-agent/src/core/tools/index.ts"
+index_content = index_path.read_text(encoding="utf-8")
+index_content = index_content.replace(
+    'displayArgs.command.split("\\\\n")',
+    'displayArgs.command.split("\\n")',
+)
+index_path.write_text(index_content, encoding="utf-8")
