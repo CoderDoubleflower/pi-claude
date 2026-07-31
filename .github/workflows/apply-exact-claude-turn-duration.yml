@@ -49,6 +49,10 @@ jobs:
         if: steps.patch.outputs.run == 'true'
         run: npm ci --ignore-scripts
 
+      - name: Repair staged patch script
+        if: steps.patch.outputs.run == 'true' && hashFiles('.github/scripts/repair-exact-claude-turn-duration.mjs') != ''
+        run: node .github/scripts/repair-exact-claude-turn-duration.mjs
+
       - name: Apply exact source patch
         if: steps.patch.outputs.run == 'true'
         run: node .github/scripts/apply-exact-claude-turn-duration.mjs
@@ -81,12 +85,14 @@ jobs:
         run: |
           git add -A \
             .github/scripts/apply-exact-claude-turn-duration.mjs \
+            .github/scripts/repair-exact-claude-turn-duration.mjs \
             packages/coding-agent/src/modes/interactive/components/claude-turn-duration.ts \
             packages/coding-agent/src/modes/interactive/components/claude-working.ts \
             packages/coding-agent/src/modes/interactive/components/status-indicator.ts \
             packages/coding-agent/src/modes/interactive/interactive-mode.ts \
             packages/coding-agent/test/claude-status.test.ts
-          actual="$(git diff --cached --name-only | sort)"
+          base="$(git merge-base HEAD origin/main)"
+          actual="$(git diff --name-only "$base" | sort)"
           expected="$(printf '%s\n' \
             packages/coding-agent/src/modes/interactive/components/claude-turn-duration.ts \
             packages/coding-agent/src/modes/interactive/components/claude-working.ts \
@@ -94,7 +100,7 @@ jobs:
             packages/coding-agent/src/modes/interactive/interactive-mode.ts \
             packages/coding-agent/test/claude-status.test.ts | sort)"
           if [[ "$actual" != "$expected" ]]; then
-            echo "Unexpected staged files:"
+            echo "Unexpected final branch diff:"
             printf '%s\n' "$actual"
             exit 1
           fi
