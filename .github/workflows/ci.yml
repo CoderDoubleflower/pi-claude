@@ -83,5 +83,6 @@ jobs:
                   print()
           PY
 
+          rm -f .github/markdown-transformer-retry
           chmod +x /tmp/integrate-markdown-transformer.sh
           bash /tmp/integrate-markdown-transformer.sh
