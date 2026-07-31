@@ -112,6 +112,7 @@ function isMessageArray(value: Context | readonly Message[]): value is readonly 
 /**
  * Runtime-compatible copy of the context estimator added after pi-ai 0.83.0.
  * Keep this local until the published dependency exposes the same API.
+ * The package smoke test exercises this fallback against the actual shrinkwrap.
  */
 export function estimateLlmContextTokens(context: Context | readonly Message[]): ContextUsageEstimate {
 	if (isMessageArray(context)) return estimateMessages(context);
