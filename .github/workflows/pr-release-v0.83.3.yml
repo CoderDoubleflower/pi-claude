@@ -69,15 +69,26 @@ jobs:
         run: npm run check
 
       - name: Test
-        run: npm test
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH}"
+          command -v git
+          git --version
+          npm test
 
       - name: Verify packed npm installation
-        run: npm run check:package-smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH}"
+          npm run check:package-smoke
 
       - name: Commit release metadata
         shell: bash
         run: |
           set -euo pipefail
+          export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
@@ -114,6 +125,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH}"
           release_sha="$(git rev-parse HEAD)"
           gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
             --raw-field "ref=refs/tags/${RELEASE_TAG}" \
