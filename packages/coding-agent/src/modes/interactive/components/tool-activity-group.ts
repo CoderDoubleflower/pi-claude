@@ -1,5 +1,6 @@
 import { type Component, truncateToWidth } from "@earendil-works/pi-tui";
 import { classifyBashDisplayKind } from "../../../core/tools/bash.ts";
+import { getToolExecutionArguments } from "../../../core/tools/execution-arguments.ts";
 import { theme } from "../theme/theme.ts";
 import { keyHint } from "./keybinding-hints.ts";
 
@@ -111,12 +112,20 @@ export class ToolActivityGroupComponent implements Component {
 		const entry = this.entries.find((item) => item.toolCallId === toolCallId);
 		if (!entry) return;
 		entry.args = args;
+		entry.kind = getToolActivityKind(entry.toolName, args) ?? entry.kind;
 		this.updateHint(getHint(entry.toolName, args));
 	}
 
 	markStarted(toolCallId: string): void {
 		const entry = this.entries.find((item) => item.toolCallId === toolCallId);
-		if (entry) entry.status = "running";
+		if (!entry) return;
+		const executionArgs = getToolExecutionArguments<Record<string, unknown>>(toolCallId);
+		if (executionArgs !== undefined) {
+			entry.args = executionArgs;
+			entry.kind = getToolActivityKind(entry.toolName, executionArgs) ?? entry.kind;
+			this.updateHint(getHint(entry.toolName, executionArgs));
+		}
+		entry.status = "running";
 	}
 
 	markCompleted(toolCallId: string, isError: boolean): void {
