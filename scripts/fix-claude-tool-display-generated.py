@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import re
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
@@ -133,8 +134,12 @@ behavior_script.unlink()
 
 index_path = root / "packages/coding-agent/src/core/tools/index.ts"
 index_content = index_path.read_text(encoding="utf-8")
-index_content = index_content.replace(
-    'displayArgs.command.split("\\\\n")',
-    'displayArgs.command.split("\\n")',
+index_content, replacement_count = re.subn(
+    r'typeof displayArgs\.command === "string" \? displayArgs\.command\.split\([^)]*\) : \[displayArgs\.command\];',
+    'typeof displayArgs.command === "string"\n\t\t\t\t\t? displayArgs.command.split(String.fromCharCode(10))\n\t\t\t\t\t: [displayArgs.command];',
+    index_content,
+    count=1,
 )
+if replacement_count != 1:
+    raise RuntimeError(f"expected one Bash newline splitter, found {replacement_count}")
 index_path.write_text(index_content, encoding="utf-8")
