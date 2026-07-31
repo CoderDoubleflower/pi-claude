@@ -6,6 +6,7 @@ import { CountdownTimer } from "./countdown-timer.ts";
 import { keyText } from "./keybinding-hints.ts";
 
 const LEGACY_DEFAULT_WORKING_MESSAGE = "Working...";
+const CLAUDE_COMPACTION_MESSAGE = "Compacting conversation…";
 
 function resolveWorkingMessage(message: string | undefined, defaultMessage: string): string {
 	if (message === undefined || message === LEGACY_DEFAULT_WORKING_MESSAGE) {
@@ -35,7 +36,7 @@ export class StatusIndicator extends Loader {
 	}
 
 	override render(width: number): string[] {
-		return super.render(width).map((line) => (line.startsWith(" ") ? line.slice(1) + " " : line));
+		return super.render(width).map((line) => (line.startsWith(" ") ? `${line.slice(1)} ` : line));
 	}
 
 	dispose(): void {
@@ -105,7 +106,7 @@ export class CompactionStatusIndicator extends StatusIndicator {
 			ui,
 			colorClaudeWorkingText,
 			colorClaudeWorkingText,
-			"Compacting conversation…",
+			CLAUDE_COMPACTION_MESSAGE,
 			CLAUDE_WORKING_INDICATOR,
 		);
 	}
