@@ -22,25 +22,41 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
+      - name: Detect pending migration
+        id: migration
+        run: |
+          if [ -f scripts/apply-claude-tool-display-parity.py ]; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "Validated implementation is already materialized on the PR branch."
+          fi
+
       - name: Set up Node
+        if: steps.migration.outputs.needed == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 22.19.0
           cache: npm
 
       - name: Apply migration
+        if: steps.migration.outputs.needed == 'true'
         run: |
           python3 scripts/apply-claude-tool-display-parity.py
           python3 scripts/fix-claude-tool-display-generated.py
           python3 scripts/repair-claude-tool-display-source.py
+          python3 scripts/repair-claude-tool-display-types.py
 
       - name: Install dependencies
+        if: steps.migration.outputs.needed == 'true'
         run: npm ci --ignore-scripts
 
       - name: Migrate generated Bash preview tests
+        if: steps.migration.outputs.needed == 'true'
         run: python3 scripts/repair-claude-bash-preview-tests.py
 
       - name: Format changed files
+        if: steps.migration.outputs.needed == 'true'
         run: |
           npx biome check --write \
             packages/coding-agent/src/core/tools/index.ts \
@@ -55,23 +71,29 @@ jobs:
             packages/coding-agent/test/claude-tool-display.test.ts
 
       - name: Run focused display tests
+        if: steps.migration.outputs.needed == 'true'
         run: npm exec --workspace=@doubleflower/pi-claude vitest --run test/bash-command-rendering.test.ts test/claude-tool-display.test.ts
 
       - name: Run coding-agent tests
+        if: steps.migration.outputs.needed == 'true'
         run: npm test --workspace=@doubleflower/pi-claude
 
       - name: Build repository
+        if: steps.migration.outputs.needed == 'true'
         run: npm run build
 
       - name: Type and import checks
+        if: steps.migration.outputs.needed == 'true'
         run: |
           npx tsgo --noEmit
           npm run check:ts-imports
 
       - name: Remove one-off migration files
-        run: rm -f scripts/apply-claude-tool-display-parity.py scripts/fix-claude-tool-display-generated.py scripts/repair-claude-tool-display-source.py scripts/repair-claude-bash-preview-tests.py .github/workflows/apply-claude-tool-display-parity.yml .github/claude-tool-display-rerun
+        if: steps.migration.outputs.needed == 'true'
+        run: rm -f scripts/apply-claude-tool-display-parity.py scripts/fix-claude-tool-display-generated.py scripts/repair-claude-tool-display-source.py scripts/repair-claude-tool-display-types.py scripts/repair-claude-bash-preview-tests.py .github/workflows/apply-claude-tool-display-parity.yml .github/claude-tool-display-rerun
 
       - name: Commit implementation
+        if: steps.migration.outputs.needed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
