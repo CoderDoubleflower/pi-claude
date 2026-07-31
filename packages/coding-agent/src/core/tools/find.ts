@@ -32,6 +32,7 @@ const DEFAULT_LIMIT = 1000;
 export interface FindToolDetails {
 	truncation?: TruncationResult;
 	resultLimitReached?: number;
+	resultCount?: number;
 }
 
 /**
@@ -81,26 +82,30 @@ function formatFindResult(
 	options: ToolRenderResultOptions,
 	theme: Theme,
 	showImages: boolean,
+	isError: boolean,
 ): string {
 	const output = getTextOutput(result, showImages).trim();
-	let text = "";
-	if (output) {
+	const count =
+		result.details?.resultCount ?? (output.startsWith("No files found") ? 0 : output ? output.split("\n").length : 0);
+	let text = `\n${theme.fg("toolOutput", `Found ${count} ${count === 1 ? "file" : "files"}`)}`;
+	if (!options.expanded && !isError) {
+		if (count > 0) text += ` ${keyHint("app.tools.expand", "to expand")}`;
+	} else if (output) {
 		const lines = output.split("\n");
 		const maxLines = options.expanded ? lines.length : 20;
 		const displayLines = lines.slice(0, maxLines);
 		const remaining = lines.length - maxLines;
-		text += `\n${displayLines.map((line) => theme.fg("toolOutput", line)).join("\n")}`;
+		text += `\n${displayLines.map((line) => theme.fg(isError ? "error" : "toolOutput", line)).join("\n")}`;
 		if (remaining > 0) {
-			text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+			text += `${theme.fg("muted", `\n… +${remaining} lines`)} ${keyHint("app.tools.expand", "to expand")}`;
 		}
 	}
-
-	const resultLimit = result.details?.resultLimitReached;
-	const truncation = result.details?.truncation;
-	if (resultLimit || truncation?.truncated) {
-		const warnings: string[] = [];
-		if (resultLimit) warnings.push(`${resultLimit} results limit`);
-		if (truncation?.truncated) warnings.push(`${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit`);
+	const warnings: string[] = [];
+	if (result.details?.resultLimitReached) warnings.push(`${result.details.resultLimitReached} results limit`);
+	if (result.details?.truncation?.truncated) {
+		warnings.push(`${formatSize(result.details.truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit`);
+	}
+	if (warnings.length > 0) {
 		text += `\n${theme.fg("warning", `[Truncated: ${warnings.join(", ")}]`)}`;
 	}
 	return text;
@@ -173,7 +178,7 @@ export function createFindToolDefinition(
 								settle(() =>
 									resolve({
 										content: [{ type: "text", text: "No files found matching pattern" }],
-										details: undefined,
+										details: { resultCount: 0 },
 									}),
 								);
 								return;
@@ -188,7 +193,7 @@ export function createFindToolDefinition(
 							const rawOutput = relativized.join("\n");
 							const truncation = truncateHead(rawOutput, { maxLines: Number.MAX_SAFE_INTEGER });
 							let resultOutput = truncation.content;
-							const details: FindToolDetails = {};
+							const details: FindToolDetails = { resultCount: relativized.length };
 							const notices: string[] = [];
 							if (resultLimitReached) {
 								notices.push(`${effectiveLimit} results limit reached`);
@@ -298,7 +303,7 @@ export function createFindToolDefinition(
 								settle(() =>
 									resolve({
 										content: [{ type: "text", text: "No files found matching pattern" }],
-										details: undefined,
+										details: { resultCount: 0 },
 									}),
 								);
 								return;
@@ -323,7 +328,7 @@ export function createFindToolDefinition(
 							const rawOutput = relativized.join("\n");
 							const truncation = truncateHead(rawOutput, { maxLines: Number.MAX_SAFE_INTEGER });
 							let resultOutput = truncation.content;
-							const details: FindToolDetails = {};
+							const details: FindToolDetails = { resultCount: relativized.length };
 							const notices: string[] = [];
 							if (resultLimitReached) {
 								notices.push(
@@ -363,7 +368,7 @@ export function createFindToolDefinition(
 		},
 		renderResult(result, options, theme, context) {
 			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-			text.setText(formatFindResult(result as any, options, theme, context.showImages));
+			text.setText(formatFindResult(result as any, options, theme, context.showImages, context.isError));
 			return text;
 		},
 	};

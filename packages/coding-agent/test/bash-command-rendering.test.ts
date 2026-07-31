@@ -74,7 +74,7 @@ describe("Bash command rendering", () => {
 		expect(text).not.toContain("stale-command");
 	});
 
-	it("compacts multiline and long calls to one line until expanded", () => {
+	it("uses Claude-style two-line and 160-column Bash previews until expanded", () => {
 		const definition = createAllToolDefinitions(process.cwd()).bash;
 		const context = createRenderContext("bash-compact-render", {
 			executionStarted: true,
@@ -83,14 +83,14 @@ describe("Bash command rendering", () => {
 		const multilineCommand = "printf 'first\\n'\nprintf 'second\\n'";
 
 		const compactMultiline = renderLines(definition.renderCall?.({ command: multilineCommand }, theme, context));
-		expect(compactMultiline).toHaveLength(1);
+		expect(compactMultiline).toHaveLength(2);
 		expect(compactMultiline[0]).toContain("printf 'first\\n'");
-		expect(compactMultiline[0]).toContain("printf 'second\\n'");
+		expect(compactMultiline[1]).toContain("printf 'second\\n'");
 
 		const longCommand = `echo ${"x".repeat(180)}`;
 		const compactLong = renderLines(definition.renderCall?.({ command: longCommand }, theme, context));
 		expect(compactLong).toHaveLength(1);
-		expect(compactLong[0]?.length).toBeLessThanOrEqual(120);
+		expect(compactLong[0]?.length).toBeLessThanOrEqual(160);
 		expect(compactLong[0]).not.toContain(longCommand);
 
 		context.expanded = true;

@@ -5,7 +5,6 @@ import { Container, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { spawn } from "child_process";
 import { type Static, Type } from "typebox";
 import { keyHint } from "../../modes/interactive/components/keybinding-hints.ts";
-import { truncateToVisualLines } from "../../modes/interactive/components/visual-truncate.ts";
 import { theme } from "../../modes/interactive/theme/theme.ts";
 import { waitForChildProcess } from "../../utils/child-process.ts";
 import {
@@ -47,6 +46,90 @@ export type BashToolInput = Static<typeof bashSchema>;
 export interface BashToolDetails {
 	truncation?: TruncationResult;
 	fullOutputPath?: string;
+}
+
+export type BashDisplayKind = "search" | "read" | "list" | "bash";
+
+const BASH_SEARCH_COMMANDS = new Set(["find", "grep", "rg", "ag", "ack", "locate", "which", "whereis"]);
+const BASH_READ_COMMANDS = new Set([
+	"cat",
+	"head",
+	"tail",
+	"less",
+	"more",
+	"wc",
+	"stat",
+	"file",
+	"strings",
+	"jq",
+	"awk",
+	"cut",
+	"sort",
+	"uniq",
+	"tr",
+]);
+const BASH_LIST_COMMANDS = new Set(["ls", "tree", "du"]);
+const BASH_NEUTRAL_COMMANDS = new Set(["echo", "printf", "true", "false", ":", "cd", "export", "unset"]);
+const BASH_WRAPPER_COMMANDS = new Set(["sudo", "env", "command", "builtin", "nohup", "time"]);
+const BASH_SILENT_COMMANDS = new Set([
+	"mv",
+	"cp",
+	"rm",
+	"mkdir",
+	"rmdir",
+	"chmod",
+	"chown",
+	"chgrp",
+	"touch",
+	"ln",
+	"cd",
+	"export",
+	"unset",
+	"wait",
+]);
+
+function getBaseCommand(segment: string): string | undefined {
+	const words = segment.trim().split(/\s+/).filter(Boolean);
+	while (words[0] && /^[A-Za-z_][A-Za-z0-9_]*=/.test(words[0])) words.shift();
+	while (words[0] && BASH_WRAPPER_COMMANDS.has(words[0])) words.shift();
+	const command = words[0];
+	if (!command) return undefined;
+	return command.split(/[\\/]/).at(-1);
+}
+
+export function classifyBashDisplayKind(command: string | undefined): BashDisplayKind {
+	if (!command?.trim()) return "bash";
+	let sawSearch = false;
+	let sawRead = false;
+	let sawList = false;
+	let sawCommand = false;
+
+	for (const segment of command.split(/(?:&&|\|\||[|;\n])/)) {
+		const baseCommand = getBaseCommand(segment);
+		if (!baseCommand || BASH_NEUTRAL_COMMANDS.has(baseCommand)) continue;
+		sawCommand = true;
+		if (BASH_SEARCH_COMMANDS.has(baseCommand)) sawSearch = true;
+		else if (BASH_READ_COMMANDS.has(baseCommand)) sawRead = true;
+		else if (BASH_LIST_COMMANDS.has(baseCommand)) sawList = true;
+		else return "bash";
+	}
+
+	if (!sawCommand) return "bash";
+	if (sawSearch) return "search";
+	if (sawRead) return "read";
+	if (sawList) return "list";
+	return "bash";
+}
+
+function isSilentBashCommand(command: string): boolean {
+	let sawCommand = false;
+	for (const segment of command.split(/(?:&&|\|\||[|;\n])/)) {
+		const baseCommand = getBaseCommand(segment);
+		if (!baseCommand || BASH_NEUTRAL_COMMANDS.has(baseCommand)) continue;
+		sawCommand = true;
+		if (!BASH_SILENT_COMMANDS.has(baseCommand)) return false;
+	}
+	return sawCommand;
 }
 
 /**
@@ -196,7 +279,7 @@ export interface BashToolOptions {
 	spawnHook?: BashSpawnHook;
 }
 
-const BASH_PREVIEW_LINES = 5;
+const BASH_PREVIEW_LINES = 3;
 const BASH_UPDATE_THROTTLE_MS = 100;
 
 type BashRenderState = {
@@ -229,6 +312,28 @@ function formatBashCall(args: { command?: string; timeout?: number } | undefined
 	const timeoutSuffix = timeout ? theme.fg("muted", ` (timeout ${timeout}s)`) : "";
 	const commandDisplay = command === null ? invalidArgText(theme) : command ? command : theme.fg("toolOutput", "...");
 	return theme.fg("toolTitle", theme.bold(`$ ${commandDisplay}`)) + timeoutSuffix;
+}
+
+function truncateToLeadingVisualLines(
+	text: string,
+	maxVisualLines: number,
+	width: number,
+): {
+	visualLines: string[];
+	skippedCount: number;
+} {
+	const allVisualLines = new Text(text, 0, 0).render(width);
+	if (allVisualLines.length <= maxVisualLines) {
+		return { visualLines: allVisualLines, skippedCount: 0 };
+	}
+	const remaining = allVisualLines.length - maxVisualLines;
+	if (remaining === 1) {
+		return { visualLines: allVisualLines.slice(0, maxVisualLines + 1), skippedCount: 0 };
+	}
+	return {
+		visualLines: allVisualLines.slice(0, maxVisualLines),
+		skippedCount: remaining,
+	};
 }
 
 function rebuildBashResultRenderComponent(
@@ -267,15 +372,15 @@ function rebuildBashResultRenderComponent(
 			component.addChild({
 				render: (width: number) => {
 					if (state.cachedLines === undefined || state.cachedWidth !== width) {
-						const preview = truncateToVisualLines(styledOutput, BASH_PREVIEW_LINES, width);
+						const preview = truncateToLeadingVisualLines(styledOutput, BASH_PREVIEW_LINES, width);
 						state.cachedLines = preview.visualLines;
 						state.cachedSkipped = preview.skippedCount;
 						state.cachedWidth = width;
 					}
 					if (state.cachedSkipped && state.cachedSkipped > 0) {
 						const hint =
-							theme.fg("muted", `... (${state.cachedSkipped} earlier lines,`) +
-							` ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+							theme.fg("muted", `… +${state.cachedSkipped} lines`) +
+							` ${keyHint("app.tools.expand", "to expand")}`;
 						return ["", truncateToWidth(hint, width, "..."), ...(state.cachedLines ?? [])];
 					}
 					return ["", ...(state.cachedLines ?? [])];
@@ -447,7 +552,10 @@ export function createBashToolDefinition(
 				}
 
 				const snapshot = await finishOutput();
-				const { text: outputText, details } = formatOutput(snapshot);
+				const { text: outputText, details } = formatOutput(
+					snapshot,
+					isSilentBashCommand(command) ? "Done" : "(no output)",
+				);
 				if (exitCode !== 0 && exitCode !== null) {
 					throw new Error(appendStatus(outputText, `Command exited with code ${exitCode}`));
 				}

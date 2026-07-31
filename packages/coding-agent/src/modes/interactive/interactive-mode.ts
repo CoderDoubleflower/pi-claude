@@ -142,6 +142,7 @@ import {
 	type StatusIndicator,
 	WorkingStatusIndicator,
 } from "./components/status-indicator.ts";
+import { getToolActivityKind, ToolActivityGroupComponent } from "./components/tool-activity-group.ts";
 import { ToolExecutionComponent } from "./components/tool-execution.ts";
 import { TreeSelectorComponent } from "./components/tree-selector.ts";
 import { TrustSelectorComponent } from "./components/trust-selector.ts";
@@ -391,6 +392,8 @@ export class InteractiveMode {
 
 	// Tool execution tracking: toolCallId -> component
 	private pendingTools = new Map<string, ToolExecutionComponent>();
+	private toolActivityGroups = new Map<string, ToolActivityGroupComponent>();
+	private activeToolActivityGroup: ToolActivityGroupComponent | undefined;
 
 	// Tool output expansion state
 	private toolOutputExpanded = false;
@@ -2878,6 +2881,57 @@ export class InteractiveMode {
 		};
 	}
 
+	private breakToolActivityGroup(): void {
+		this.activeToolActivityGroup = undefined;
+	}
+
+	private resetToolActivityState(): void {
+		this.toolActivityGroups.clear();
+		this.activeToolActivityGroup = undefined;
+	}
+
+	private addToolExecutionToChat(
+		toolName: string,
+		toolCallId: string,
+		args: Record<string, unknown>,
+		component: ToolExecutionComponent,
+	): void {
+		const kind = getToolActivityKind(toolName, args);
+		if (!kind) {
+			if (typeof this.breakToolActivityGroup === "function") this.breakToolActivityGroup();
+			this.chatContainer.addChild(component);
+			return;
+		}
+
+		let group = this.activeToolActivityGroup;
+		if (!group) {
+			group = new ToolActivityGroupComponent(() => this.ui.requestRender());
+			group.setExpanded(this.toolOutputExpanded);
+			this.chatContainer.addChild(group);
+			this.activeToolActivityGroup = group;
+		}
+		group.addTool({ toolCallId, toolName, args, kind, component });
+		this.toolActivityGroups.set(toolCallId, group);
+	}
+
+	private updateToolActivityArgs(toolCallId: string, args: Record<string, unknown>): void {
+		const group = this.toolActivityGroups.get(toolCallId);
+		if (!group) {
+			if (typeof this.breakToolActivityGroup === "function") this.breakToolActivityGroup();
+			return;
+		}
+		group.updateArgs(toolCallId, args);
+		this.activeToolActivityGroup = group;
+	}
+
+	private markToolActivityStarted(toolCallId: string): void {
+		this.toolActivityGroups.get(toolCallId)?.markStarted(toolCallId);
+	}
+
+	private markToolActivityCompleted(toolCallId: string, isError: boolean): void {
+		this.toolActivityGroups.get(toolCallId)?.markCompleted(toolCallId, isError);
+	}
+
 	private subscribeToAgent(): void {
 		this.unsubscribe = this.session.subscribe(async (event) => {
 			await this.handleEvent(event);
@@ -2895,6 +2949,7 @@ export class InteractiveMode {
 			case "agent_start":
 				this.agentStartedAt = Date.now();
 				this.pendingTools.clear();
+				if (typeof this.resetToolActivityState === "function") this.resetToolActivityState();
 				if (this.settingsManager.getShowTerminalProgress()) {
 					this.ui.terminal.setProgress(true);
 				}
@@ -2943,9 +2998,11 @@ export class InteractiveMode {
 
 			case "message_start":
 				if (event.message.role === "custom") {
+					if (typeof this.breakToolActivityGroup === "function") this.breakToolActivityGroup();
 					this.addMessageToChat(event.message);
 					this.ui.requestRender();
 				} else if (event.message.role === "user") {
+					if (typeof this.breakToolActivityGroup === "function") this.breakToolActivityGroup();
 					this.addMessageToChat(event.message);
 					this.updatePendingMessagesDisplay();
 					this.ui.requestRender();
@@ -2971,6 +3028,10 @@ export class InteractiveMode {
 					this.streamingComponent.updateContent(this.streamingMessage, true);
 
 					for (const content of this.streamingMessage.content) {
+						if (content.type === "text" && content.text.trim().length > 0) {
+							if (typeof this.breakToolActivityGroup === "function") this.breakToolActivityGroup();
+							continue;
+						}
 						if (content.type === "toolCall") {
 							if (!this.pendingTools.has(content.id)) {
 								const component = new ToolExecutionComponent(
@@ -2986,12 +3047,18 @@ export class InteractiveMode {
 									this.sessionManager.getCwd(),
 								);
 								component.setExpanded(this.toolOutputExpanded);
-								this.chatContainer.addChild(component);
+								if (typeof this.addToolExecutionToChat === "function") {
+									this.addToolExecutionToChat(content.name, content.id, content.arguments, component);
+								} else {
+									this.chatContainer.addChild(component);
+								}
 								this.pendingTools.set(content.id, component);
 							} else {
 								const component = this.pendingTools.get(content.id);
 								if (component) {
 									component.updateArgs(content.arguments);
+									if (typeof this.updateToolActivityArgs === "function")
+										this.updateToolActivityArgs(content.id, content.arguments);
 								}
 							}
 						}
@@ -3019,11 +3086,13 @@ export class InteractiveMode {
 						if (!errorMessage) {
 							errorMessage = this.streamingMessage.errorMessage || "Error";
 						}
-						for (const [, component] of this.pendingTools.entries()) {
+						for (const [toolCallId, component] of this.pendingTools.entries()) {
 							component.updateResult({
 								content: [{ type: "text", text: errorMessage }],
 								isError: true,
 							});
+							if (typeof this.markToolActivityCompleted === "function")
+								this.markToolActivityCompleted(toolCallId, true);
 						}
 						this.pendingTools.clear();
 					} else {
@@ -3060,10 +3129,15 @@ export class InteractiveMode {
 						this.sessionManager.getCwd(),
 					);
 					component.setExpanded(this.toolOutputExpanded);
-					this.chatContainer.addChild(component);
+					if (typeof this.addToolExecutionToChat === "function") {
+						this.addToolExecutionToChat(event.toolName, event.toolCallId, event.args, component);
+					} else {
+						this.chatContainer.addChild(component);
+					}
 					this.pendingTools.set(event.toolCallId, component);
 				}
 				component.markExecutionStarted();
+				if (typeof this.markToolActivityStarted === "function") this.markToolActivityStarted(event.toolCallId);
 				this.ui.requestRender();
 				break;
 			}
@@ -3080,7 +3154,19 @@ export class InteractiveMode {
 			case "tool_execution_end": {
 				const component = this.pendingTools.get(event.toolCallId);
 				if (component) {
-					component.updateResult({ ...event.result, isError: event.isError });
+					const displayContent = event.result.content.filter(
+						(
+							content: (typeof event.result.content)[number],
+						): content is Extract<(typeof event.result.content)[number], { type: "text" | "image" }> =>
+							content.type === "text" || content.type === "image",
+					);
+					component.updateResult({
+						content: displayContent,
+						details: event.result.details,
+						isError: event.isError,
+					});
+					if (typeof this.markToolActivityCompleted === "function")
+						this.markToolActivityCompleted(event.toolCallId, event.isError);
 					this.pendingTools.delete(event.toolCallId);
 					this.ui.requestRender();
 				}
@@ -3105,6 +3191,7 @@ export class InteractiveMode {
 					this.streamingMessage = undefined;
 				}
 				this.pendingTools.clear();
+				if (typeof this.resetToolActivityState === "function") this.resetToolActivityState();
 
 				this.ui.requestRender();
 				break;
@@ -3393,6 +3480,7 @@ export class InteractiveMode {
 		options: { updateFooter?: boolean; populateHistory?: boolean } = {},
 	): void {
 		this.pendingTools.clear();
+		if (typeof this.resetToolActivityState === "function") this.resetToolActivityState();
 		const renderedPendingTools = new Map<string, ToolExecutionComponent>();
 		// Cache-miss notices are not persisted; re-derive them from the full entry
 		// list and re-inject them after the assistant messages that paid for them.
@@ -3407,6 +3495,7 @@ export class InteractiveMode {
 
 		for (const item of items) {
 			if (isCustomSessionEntry(item)) {
+				if (typeof this.breakToolActivityGroup === "function") this.breakToolActivityGroup();
 				this.addCustomEntryToChat(item);
 				continue;
 			}
@@ -3414,8 +3503,24 @@ export class InteractiveMode {
 			const message = item;
 			// Assistant messages need special handling for tool calls
 			if (message.role === "assistant") {
+				const firstToolIndex = message.content.findIndex((content) => content.type === "toolCall");
+				let lastToolIndex = -1;
+				for (let index = message.content.length - 1; index >= 0; index -= 1) {
+					if (message.content[index]?.type === "toolCall") {
+						lastToolIndex = index;
+						break;
+					}
+				}
+				const hasTextBeforeTools = message.content
+					.slice(0, firstToolIndex < 0 ? message.content.length : firstToolIndex)
+					.some((content) => content.type === "text" && content.text.trim().length > 0);
+				const hasTextAfterTools =
+					lastToolIndex >= 0 &&
+					message.content
+						.slice(lastToolIndex + 1)
+						.some((content) => content.type === "text" && content.text.trim().length > 0);
+				if (firstToolIndex < 0 || hasTextBeforeTools) this.breakToolActivityGroup();
 				this.addMessageToChat(message);
-				// Render tool call components
 				for (const content of message.content) {
 					if (content.type === "toolCall") {
 						const component = new ToolExecutionComponent(
@@ -3431,7 +3536,11 @@ export class InteractiveMode {
 							this.sessionManager.getCwd(),
 						);
 						component.setExpanded(this.toolOutputExpanded);
-						this.chatContainer.addChild(component);
+						if (typeof this.addToolExecutionToChat === "function") {
+							this.addToolExecutionToChat(content.name, content.id, content.arguments, component);
+						} else {
+							this.chatContainer.addChild(component);
+						}
 
 						if (message.stopReason === "aborted" || message.stopReason === "error") {
 							let errorMessage: string;
@@ -3445,24 +3554,28 @@ export class InteractiveMode {
 								errorMessage = message.errorMessage || "Error";
 							}
 							component.updateResult({ content: [{ type: "text", text: errorMessage }], isError: true });
+							if (typeof this.markToolActivityCompleted === "function")
+								this.markToolActivityCompleted(content.id, true);
 						} else {
 							renderedPendingTools.set(content.id, component);
 						}
 					}
 				}
+				if (hasTextAfterTools) this.breakToolActivityGroup();
 				if (message.stopReason !== "aborted" && message.stopReason !== "error") {
 					const miss = cacheMisses.get(message);
 					if (miss) this.addCacheMissNotice(miss);
 				}
 			} else if (message.role === "toolResult") {
-				// Match tool results to pending tool components
 				const component = renderedPendingTools.get(message.toolCallId);
 				if (component) {
 					component.updateResult(message);
+					if (typeof this.markToolActivityCompleted === "function")
+						this.markToolActivityCompleted(message.toolCallId, message.isError);
 					renderedPendingTools.delete(message.toolCallId);
 				}
 			} else {
-				// All other messages use standard rendering
+				if (typeof this.breakToolActivityGroup === "function") this.breakToolActivityGroup();
 				this.addMessageToChat(message, options);
 			}
 		}

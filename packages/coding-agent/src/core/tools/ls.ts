@@ -23,6 +23,7 @@ const DEFAULT_LIMIT = 500;
 export interface LsToolDetails {
 	truncation?: TruncationResult;
 	entryLimitReached?: number;
+	entryCount?: number;
 }
 
 /**
@@ -67,26 +68,30 @@ function formatLsResult(
 	options: ToolRenderResultOptions,
 	theme: Theme,
 	showImages: boolean,
+	isError: boolean,
 ): string {
 	const output = getTextOutput(result, showImages).trim();
-	let text = "";
-	if (output) {
+	const count =
+		result.details?.entryCount ?? (output === "(empty directory)" ? 0 : output ? output.split("\n").length : 0);
+	let text = `\n${theme.fg("toolOutput", `Listed ${count} ${count === 1 ? "entry" : "entries"}`)}`;
+	if (!options.expanded && !isError) {
+		if (count > 0) text += ` ${keyHint("app.tools.expand", "to expand")}`;
+	} else if (output) {
 		const lines = output.split("\n");
 		const maxLines = options.expanded ? lines.length : 20;
 		const displayLines = lines.slice(0, maxLines);
 		const remaining = lines.length - maxLines;
-		text += `\n${displayLines.map((line) => theme.fg("toolOutput", line)).join("\n")}`;
+		text += `\n${displayLines.map((line) => theme.fg(isError ? "error" : "toolOutput", line)).join("\n")}`;
 		if (remaining > 0) {
-			text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+			text += `${theme.fg("muted", `\n… +${remaining} lines`)} ${keyHint("app.tools.expand", "to expand")}`;
 		}
 	}
-
-	const entryLimit = result.details?.entryLimitReached;
-	const truncation = result.details?.truncation;
-	if (entryLimit || truncation?.truncated) {
-		const warnings: string[] = [];
-		if (entryLimit) warnings.push(`${entryLimit} entries limit`);
-		if (truncation?.truncated) warnings.push(`${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit`);
+	const warnings: string[] = [];
+	if (result.details?.entryLimitReached) warnings.push(`${result.details.entryLimitReached} entries limit`);
+	if (result.details?.truncation?.truncated) {
+		warnings.push(`${formatSize(result.details.truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit`);
+	}
+	if (warnings.length > 0) {
 		text += `\n${theme.fg("warning", `[Truncated: ${warnings.join(", ")}]`)}`;
 	}
 	return text;
@@ -173,7 +178,7 @@ export function createLsToolDefinition(
 						signal?.removeEventListener("abort", onAbort);
 
 						if (results.length === 0) {
-							resolve({ content: [{ type: "text", text: "(empty directory)" }], details: undefined });
+							resolve({ content: [{ type: "text", text: "(empty directory)" }], details: { entryCount: 0 } });
 							return;
 						}
 
@@ -181,7 +186,7 @@ export function createLsToolDefinition(
 						// Apply byte truncation. There is no separate line limit because entry count is already capped.
 						const truncation = truncateHead(rawOutput, { maxLines: Number.MAX_SAFE_INTEGER });
 						let output = truncation.content;
-						const details: LsToolDetails = {};
+						const details: LsToolDetails = { entryCount: results.length };
 						// Build actionable notices for truncation and entry limits.
 						const notices: string[] = [];
 						if (entryLimitReached) {
@@ -214,7 +219,7 @@ export function createLsToolDefinition(
 		},
 		renderResult(result, options, theme, context) {
 			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-			text.setText(formatLsResult(result as any, options, theme, context.showImages));
+			text.setText(formatLsResult(result as any, options, theme, context.showImages, context.isError));
 			return text;
 		},
 	};
