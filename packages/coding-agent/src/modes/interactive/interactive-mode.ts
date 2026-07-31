@@ -70,6 +70,7 @@ import type {
 	ExtensionUIContext,
 	ExtensionUIDialogOptions,
 	ExtensionWidgetOptions,
+	MarkdownTransformer,
 	ProjectTrustContext,
 	WorkingIndicatorOptions,
 } from "../../core/extensions/index.ts";
@@ -1814,6 +1815,10 @@ export class InteractiveMode {
 		return this.session.getToolDefinition(toolName);
 	}
 
+	private getMarkdownTransformers(): MarkdownTransformer[] {
+		return this.session.extensionRunner.getMarkdownTransformers();
+	}
+
 	/**
 	 * Set up keyboard shortcuts registered by extensions.
 	 */
@@ -2951,10 +2956,11 @@ export class InteractiveMode {
 						this.getMarkdownThemeWithSettings(),
 						this.hiddenThinkingLabel,
 						this.outputPad,
+						this.getMarkdownTransformers(),
 					);
 					this.streamingMessage = event.message;
 					this.chatContainer.addChild(this.streamingComponent);
-					this.streamingComponent.updateContent(this.streamingMessage);
+					this.streamingComponent.updateContent(this.streamingMessage, true);
 					this.ui.requestRender();
 				}
 				break;
@@ -2962,7 +2968,7 @@ export class InteractiveMode {
 			case "message_update":
 				if (this.streamingComponent && event.message.role === "assistant") {
 					this.streamingMessage = event.message;
-					this.streamingComponent.updateContent(this.streamingMessage);
+					this.streamingComponent.updateContent(this.streamingMessage, true);
 
 					for (const content of this.streamingMessage.content) {
 						if (content.type === "toolCall") {
@@ -3007,7 +3013,7 @@ export class InteractiveMode {
 								: "Operation aborted";
 						this.streamingMessage.errorMessage = errorMessage;
 					}
-					this.streamingComponent.updateContent(this.streamingMessage);
+					this.streamingComponent.updateContent(this.streamingMessage, false);
 
 					if (this.streamingMessage.stopReason === "aborted" || this.streamingMessage.stopReason === "error") {
 						if (!errorMessage) {
@@ -3341,6 +3347,7 @@ export class InteractiveMode {
 								skillBlock.userMessage,
 								this.getMarkdownThemeWithSettings(),
 								this.outputPad,
+								this.getMarkdownTransformers(),
 							);
 							this.chatContainer.addChild(userComponent);
 						}
@@ -3349,6 +3356,7 @@ export class InteractiveMode {
 							textContent,
 							this.getMarkdownThemeWithSettings(),
 							this.outputPad,
+							this.getMarkdownTransformers(),
 						);
 						this.chatContainer.addChild(userComponent);
 					}
@@ -3365,6 +3373,7 @@ export class InteractiveMode {
 					this.getMarkdownThemeWithSettings(),
 					this.hiddenThinkingLabel,
 					this.outputPad,
+					this.getMarkdownTransformers(),
 				);
 				this.chatContainer.addChild(assistantComponent);
 				break;
