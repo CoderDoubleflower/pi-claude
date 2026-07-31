@@ -65,7 +65,7 @@ jobs:
           npm run check:ts-imports
 
       - name: Remove one-off migration files
-        run: rm -f scripts/apply-claude-tool-display-parity.py scripts/fix-claude-tool-display-generated.py .github/workflows/apply-claude-tool-display-parity.yml
+        run: rm -f scripts/apply-claude-tool-display-parity.py scripts/fix-claude-tool-display-generated.py .github/workflows/apply-claude-tool-display-parity.yml .github/claude-tool-display-rerun
 
       - name: Commit implementation
         env:
