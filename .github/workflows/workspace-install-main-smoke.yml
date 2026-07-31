@@ -1,0 +1,57 @@
+name: Workspace install current main
+
+on:
+  pull_request:
+    branches:
+      - automation/workspace-install-main-base-20260731
+
+permissions:
+  contents: read
+
+jobs:
+  install-and-pack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current main test branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+          sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd
+
+      - name: Install workspace dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build current main
+        run: npm run build
+
+      - name: Pack pi-claude
+        run: |
+          mkdir -p artifacts
+          (cd packages/coding-agent && npm pack --pack-destination ../../artifacts)
+
+      - name: Install and launch globally
+        run: |
+          mkdir -p portable-prefix
+          npm install -g --ignore-scripts --prefix "$PWD/portable-prefix" ./artifacts/doubleflower-pi-claude-0.83.2.tgz
+          echo "pi-claude: $("$PWD/portable-prefix/bin/pi-claude" --version)"
+          node -e 'for (const name of ["@earendil-works/pi-tui", "@earendil-works/pi-ai", "@earendil-works/pi-agent-core"]) { const p = require(process.cwd() + "/portable-prefix/lib/node_modules/@doubleflower/pi-claude/node_modules/" + name + "/package.json"); console.log(name + ": " + p.version); }'
+          "$PWD/portable-prefix/bin/pi-claude" --help >/tmp/pi-claude-help.txt
+          head -n 20 /tmp/pi-claude-help.txt
+          tar -czf artifacts/pi-claude-current-main-prefix.tar.gz -C portable-prefix .
+
+      - name: Upload installed prefix
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-claude-current-main-prefix
+          path: artifacts/pi-claude-current-main-prefix.tar.gz
+          if-no-files-found: error
+          retention-days: 1
