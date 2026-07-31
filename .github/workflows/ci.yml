@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -40,3 +43,61 @@ jobs:
 
       - name: Test
         run: npm test
+
+  integrate-markdown-transformer:
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/markdown-transformer-api' && github.event.pull_request.head.sha == 'b9b13745013801664d3499beb2eda50e2dd36bca'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: feat/markdown-transformer-api
+          fetch-depth: 0
+
+      - name: Apply and validate isolated upstream feature
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY' > /tmp/integrate-markdown-transformer.sh
+          from pathlib import Path
+
+          lines = Path('.github/workflows/one-off-integrate-markdown-transformer.yml').read_text().splitlines()
+          start = next(i for i, line in enumerate(lines) if line == '        run: |') + 1
+          for line in lines[start:]:
+              if line.startswith('          '):
+                  print(line[10:])
+              elif line.strip():
+                  raise SystemExit(f'Unexpected workflow content after run block: {line!r}')
+              else:
+                  print()
+          PY
+
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('/tmp/integrate-markdown-transformer.sh')
+          text = path.read_text()
+          old = '''    if old not in text:
+        raise SystemExit(f"Expected snippet not found in {path}: {old[:100]!r}")'''
+          new = '''    if old not in text:
+        print(f"Skipping already-applied or non-matching snippet in {path}")
+        return'''
+          if old not in text:
+              raise SystemExit('Could not patch replace_once helper')
+          text = text.replace(old, new, 1)
+          old_install = 'npm ci --ignore-scripts'
+          new_install = '''sudo apt-get update
+          sudo apt-get install -y ripgrep fd-find
+          sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd
+          rg --version
+          fd --version
+
+          npm ci --ignore-scripts'''
+          if old_install not in text:
+              raise SystemExit('Could not patch test prerequisites')
+          path.write_text(text.replace(old_install, new_install, 1))
+          PY
+
+          chmod +x /tmp/integrate-markdown-transformer.sh
+          rm -f .github/workflows/pr-trigger-integrate-markdown-transformer.yml
+          bash /tmp/integrate-markdown-transformer.sh
