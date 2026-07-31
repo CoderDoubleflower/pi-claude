@@ -1,0 +1,39 @@
+name: Trigger Markdown transformer integration
+
+on:
+  pull_request:
+    types: [ready_for_review]
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    if: github.event.pull_request.head.ref == 'feat/markdown-transformer-api'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feat/markdown-transformer-api
+          fetch-depth: 0
+
+      - name: Execute reviewed integration script
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY' > /tmp/integrate-markdown-transformer.sh
+          from pathlib import Path
+
+          lines = Path('.github/workflows/one-off-integrate-markdown-transformer.yml').read_text().splitlines()
+          start = next(i for i, line in enumerate(lines) if line == '        run: |') + 1
+          for line in lines[start:]:
+              if line.startswith('          '):
+                  print(line[10:])
+              elif line.strip():
+                  raise SystemExit(f'Unexpected workflow content after run block: {line!r}')
+              else:
+                  print()
+          PY
+          chmod +x /tmp/integrate-markdown-transformer.sh
+          rm -f .github/workflows/pr-trigger-integrate-markdown-transformer.yml
+          bash /tmp/integrate-markdown-transformer.sh
