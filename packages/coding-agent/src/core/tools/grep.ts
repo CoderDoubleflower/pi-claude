@@ -42,6 +42,8 @@ export interface GrepToolDetails {
 	truncation?: TruncationResult;
 	matchLimitReached?: number;
 	linesTruncated?: boolean;
+	matchCount?: number;
+	fileCount?: number;
 }
 
 /**
@@ -93,28 +95,37 @@ function formatGrepResult(
 	options: ToolRenderResultOptions,
 	theme: Theme,
 	showImages: boolean,
+	isError: boolean,
 ): string {
 	const output = getTextOutput(result, showImages).trim();
-	let text = "";
-	if (output) {
+	const details = result.details;
+	const matchCount =
+		details?.matchCount ?? (output === "No matches found" ? 0 : output ? output.split("\n").length : 0);
+	const fileCount = details?.fileCount ?? 0;
+	let text = `\n${theme.fg("toolOutput", `Found ${matchCount} ${matchCount === 1 ? "match" : "matches"}`)}`;
+	if (fileCount > 0) {
+		text += theme.fg("toolOutput", ` across ${fileCount} ${fileCount === 1 ? "file" : "files"}`);
+	}
+	if (!options.expanded && !isError) {
+		if (matchCount > 0) text += ` ${keyHint("app.tools.expand", "to expand")}`;
+	} else if (output) {
 		const lines = output.split("\n");
 		const maxLines = options.expanded ? lines.length : 15;
 		const displayLines = lines.slice(0, maxLines);
 		const remaining = lines.length - maxLines;
-		text += `\n${displayLines.map((line) => theme.fg("toolOutput", line)).join("\n")}`;
+		text += `\n${displayLines.map((line) => theme.fg(isError ? "error" : "toolOutput", line)).join("\n")}`;
 		if (remaining > 0) {
-			text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
+			text += `${theme.fg("muted", `\n… +${remaining} lines`)} ${keyHint("app.tools.expand", "to expand")}`;
 		}
 	}
 
-	const matchLimit = result.details?.matchLimitReached;
-	const truncation = result.details?.truncation;
-	const linesTruncated = result.details?.linesTruncated;
-	if (matchLimit || truncation?.truncated || linesTruncated) {
-		const warnings: string[] = [];
-		if (matchLimit) warnings.push(`${matchLimit} matches limit`);
-		if (truncation?.truncated) warnings.push(`${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit`);
-		if (linesTruncated) warnings.push("some lines truncated");
+	const warnings: string[] = [];
+	if (details?.matchLimitReached) warnings.push(`${details.matchLimitReached} matches limit`);
+	if (details?.truncation?.truncated) {
+		warnings.push(`${formatSize(details.truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit`);
+	}
+	if (details?.linesTruncated) warnings.push("some lines truncated");
+	if (warnings.length > 0) {
 		text += `\n${theme.fg("warning", `[Truncated: ${warnings.join(", ")}]`)}`;
 	}
 	return text;
@@ -308,7 +319,10 @@ export function createGrepToolDefinition(
 							}
 							if (matchCount === 0) {
 								settle(() =>
-									resolve({ content: [{ type: "text", text: "No matches found" }], details: undefined }),
+									resolve({
+										content: [{ type: "text" as const, text: "No matches found" }],
+										details: { matchCount: 0, fileCount: 0 },
+									}),
 								);
 								return;
 							}
@@ -334,7 +348,10 @@ export function createGrepToolDefinition(
 							// Apply byte truncation. There is no line limit here because the match limit already capped rows.
 							const truncation = truncateHead(rawOutput, { maxLines: Number.MAX_SAFE_INTEGER });
 							let output = truncation.content;
-							const details: GrepToolDetails = {};
+							const details: GrepToolDetails = {
+								matchCount,
+								fileCount: new Set(matches.map((match) => match.filePath)).size,
+							};
 							// Build actionable notices for truncation and match limits.
 							const notices: string[] = [];
 							if (matchLimitReached) {
@@ -374,7 +391,7 @@ export function createGrepToolDefinition(
 		},
 		renderResult(result, options, theme, context) {
 			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-			text.setText(formatGrepResult(result as any, options, theme, context.showImages));
+			text.setText(formatGrepResult(result as any, options, theme, context.showImages, context.isError));
 			return text;
 		},
 	};

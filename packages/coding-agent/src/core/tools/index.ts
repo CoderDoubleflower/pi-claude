@@ -118,52 +118,51 @@ type BashDisplayState = {
 	canonicalExecutionArgs?: BashToolInput;
 };
 
-const TOOL_CALL_PREVIEW_MAX_WIDTH = 120;
+const BASH_CALL_PREVIEW_MAX_LINES = 2;
+const BASH_CALL_PREVIEW_MAX_WIDTH = 160;
 
-class CompactToolCallComponent implements Component {
-	private readonly component: Component;
+class ClaudeBashCallComponent implements Component {
+	private readonly lines: string[];
 
-	constructor(component: Component) {
-		this.component = component;
-	}
-
-	getInnerComponent(): Component {
-		return this.component;
+	constructor(lines: string[]) {
+		this.lines = lines;
 	}
 
 	render(width: number): string[] {
-		const contentLines = this.component.render(width).filter((line) => stripAnsi(line).trim().length > 0);
+		const contentLines = this.lines.filter((line) => stripAnsi(line).trim().length > 0);
 		if (contentLines.length === 0) return [];
 
-		const singleLine = contentLines.map((line) => line.trim()).join(" ");
-		const needsCompaction = contentLines.length > 1 || visibleWidth(singleLine) > TOOL_CALL_PREVIEW_MAX_WIDTH;
-		if (!needsCompaction) return contentLines;
+		const maxLineWidth = Math.max(1, Math.min(width, BASH_CALL_PREVIEW_MAX_WIDTH));
+		const rendered: string[] = [];
+		let remainingWidth = BASH_CALL_PREVIEW_MAX_WIDTH;
+		let truncated = contentLines.length > BASH_CALL_PREVIEW_MAX_LINES;
 
-		const previewWidth = Math.max(1, Math.min(width, TOOL_CALL_PREVIEW_MAX_WIDTH));
-		return [truncateToWidth(singleLine, previewWidth)];
+		for (const line of contentLines.slice(0, BASH_CALL_PREVIEW_MAX_LINES)) {
+			const allowedWidth = Math.max(1, Math.min(maxLineWidth, remainingWidth));
+			if (visibleWidth(line) > allowedWidth) {
+				rendered.push(truncateToWidth(line, allowedWidth, "…"));
+				truncated = true;
+				break;
+			}
+			rendered.push(line);
+			remainingWidth -= visibleWidth(line);
+			if (remainingWidth <= 0) {
+				truncated = contentLines.length > rendered.length;
+				break;
+			}
+		}
+
+		if (truncated && rendered.length > 0) {
+			const lastIndex = rendered.length - 1;
+			const lastLine = rendered[lastIndex] ?? "";
+			if (!stripAnsi(lastLine).endsWith("…")) {
+				rendered[lastIndex] = truncateToWidth(`${lastLine}…`, maxLineWidth, "…");
+			}
+		}
+		return rendered;
 	}
 
-	invalidate(): void {
-		this.component.invalidate?.();
-	}
-}
-
-function withCompactCallDisplay<T extends ToolDef>(definition: T): T {
-	const renderCall = definition.renderCall;
-	if (!renderCall) return definition;
-
-	return {
-		...definition,
-		renderCall(args, activeTheme, context) {
-			const lastComponent =
-				context.lastComponent instanceof CompactToolCallComponent
-					? context.lastComponent.getInnerComponent()
-					: context.lastComponent;
-			const component = renderCall(args, activeTheme, { ...context, lastComponent });
-			if (!context.executionStarted || context.expanded) return component;
-			return new CompactToolCallComponent(component);
-		},
-	} as T;
+	invalidate(): void {}
 }
 
 function createBashDisplayToolDefinition(
@@ -183,12 +182,30 @@ function createBashDisplayToolDefinition(
 				state.canonicalExecutionArgs = executionArgs;
 			}
 
-			// Keep streamed command fragments hidden, then reveal the complete event
-			// arguments as soon as execution starts. Canonical runtime arguments win
-			// once the execution wrapper has recorded them.
 			const displayArgs: BashToolInput =
 				state.canonicalExecutionArgs ?? (context.executionStarted || !context.isPartial ? args : { command: "" });
-			return renderCall(displayArgs, activeTheme, context);
+			const lastComponent =
+				context.lastComponent instanceof ClaudeBashCallComponent ? undefined : context.lastComponent;
+
+			if (!context.executionStarted || context.expanded) {
+				return renderCall(displayArgs, activeTheme, { ...context, lastComponent });
+			}
+
+			const commandLines =
+				typeof displayArgs.command === "string"
+					? displayArgs.command.split(String.fromCharCode(10))
+					: [displayArgs.command];
+			const timeoutSuffix =
+				typeof displayArgs.timeout === "number"
+					? activeTheme.fg("muted", ` (timeout ${displayArgs.timeout}s)`)
+					: "";
+			const lines = commandLines.map((command, index) => {
+				const commandDisplay = command && command.length > 0 ? command : "...";
+				return (
+					activeTheme.fg("toolTitle", activeTheme.bold(`$ ${commandDisplay}`)) + (index === 0 ? timeoutSuffix : "")
+				);
+			});
+			return new ClaudeBashCallComponent(lines);
 		},
 	};
 }
@@ -196,19 +213,19 @@ function createBashDisplayToolDefinition(
 export function createToolDefinition(toolName: ToolName, cwd: string, options?: ToolsOptions): ToolDef {
 	switch (toolName) {
 		case "read":
-			return withCompactCallDisplay(createReadToolDefinition(cwd, options?.read));
+			return createReadToolDefinition(cwd, options?.read);
 		case "bash":
-			return withCompactCallDisplay(createBashDisplayToolDefinition(cwd, options?.bash));
+			return createBashDisplayToolDefinition(cwd, options?.bash);
 		case "edit":
-			return withCompactCallDisplay(createEditToolDefinition(cwd, options?.edit));
+			return createEditToolDefinition(cwd, options?.edit);
 		case "write":
-			return withCompactCallDisplay(createWriteToolDefinition(cwd, options?.write));
+			return createWriteToolDefinition(cwd, options?.write);
 		case "grep":
-			return withCompactCallDisplay(createGrepToolDefinition(cwd, options?.grep));
+			return createGrepToolDefinition(cwd, options?.grep);
 		case "find":
-			return withCompactCallDisplay(createFindToolDefinition(cwd, options?.find));
+			return createFindToolDefinition(cwd, options?.find);
 		case "ls":
-			return withCompactCallDisplay(createLsToolDefinition(cwd, options?.ls));
+			return createLsToolDefinition(cwd, options?.ls);
 		case "TodoWrite":
 			return createTodoWriteToolDefinition();
 		default:

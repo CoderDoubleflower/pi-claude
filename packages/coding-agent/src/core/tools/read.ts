@@ -6,14 +6,14 @@ import { constants } from "fs";
 import { access as fsAccess, readFile as fsReadFile } from "fs/promises";
 import { type Static, Type } from "typebox";
 import { getReadmePath } from "../../config.ts";
-import { keyHint, keyText } from "../../modes/interactive/components/keybinding-hints.ts";
-import { getLanguageFromPath, highlightCode, type Theme } from "../../modes/interactive/theme/theme.ts";
+import { keyText } from "../../modes/interactive/components/keybinding-hints.ts";
+import type { Theme } from "../../modes/interactive/theme/theme.ts";
 import { processImage } from "../../utils/image-process.ts";
 import { detectSupportedImageMimeTypeFromFile } from "../../utils/mime.ts";
 import { formatPathRelativeToCwdOrAbsolute } from "../../utils/paths.ts";
-import type { ToolDefinition, ToolRenderResultOptions } from "../extensions/types.ts";
+import type { ToolDefinition } from "../extensions/types.ts";
 import { resolveReadPathAsync, resolveToCwd } from "./path-utils.ts";
-import { getTextOutput, renderToolPath, replaceTabs, str } from "./render-utils.ts";
+import { renderToolPath, str } from "./render-utils.ts";
 import { wrapToolDefinition } from "./tool-definition-wrapper.ts";
 import { DEFAULT_MAX_BYTES, DEFAULT_MAX_LINES, formatSize, type TruncationResult, truncateHead } from "./truncate.ts";
 
@@ -27,6 +27,10 @@ export type ReadToolInput = Static<typeof readSchema>;
 
 export interface ReadToolDetails {
 	truncation?: TruncationResult;
+	kind?: "text" | "image";
+	linesRead?: number;
+	imageMimeType?: string;
+	imageBytes?: number;
 }
 
 interface CompactReadClassification {
@@ -74,14 +78,6 @@ function formatReadLineRange(args: ReadRenderArgs | undefined, theme: Theme): st
 function formatReadCall(args: ReadRenderArgs | undefined, theme: Theme, cwd: string): string {
 	const pathDisplay = renderToolPath(str(args?.file_path ?? args?.path), theme, cwd);
 	return `${theme.fg("toolTitle", theme.bold("read"))} ${pathDisplay}${formatReadLineRange(args, theme)}`;
-}
-
-function trimTrailingEmptyLines(lines: string[]): string[] {
-	let end = lines.length;
-	while (end > 0 && lines[end - 1] === "") {
-		end--;
-	}
-	return lines.slice(0, end);
 }
 
 function getNonVisionImageNote(model: Model<Api> | undefined): string | undefined {
@@ -162,39 +158,37 @@ function formatCompactReadCall(
 }
 
 function formatReadResult(
-	args: ReadRenderArgs | undefined,
 	result: { content: (TextContent | ImageContent)[]; details?: ReadToolDetails },
-	options: ToolRenderResultOptions,
 	theme: Theme,
-	showImages: boolean,
-	_cwd: string,
 	isError: boolean,
 ): string {
-	if (!options.expanded && !isError) {
-		return "";
+	const textOutput = result.content
+		.filter((content): content is TextContent => content.type === "text")
+		.map((content) => content.text)
+		.join("\n")
+		.trim();
+	if (isError) return textOutput ? `\n${theme.fg("error", textOutput)}` : "";
+
+	const image = result.content.find((content): content is ImageContent => content.type === "image");
+	const details = result.details;
+	let summary: string;
+	if (image) {
+		const approximateBytes = Math.floor((image.data.length * 3) / 4);
+		summary = `Read image [${image.mimeType}] (${formatSize(approximateBytes)})`;
+	} else {
+		const linesRead = details?.linesRead ?? (textOutput === "" ? 0 : textOutput.split("\n").length);
+		summary = `Read ${linesRead} ${linesRead === 1 ? "line" : "lines"}`;
 	}
 
-	const rawPath = str(args?.file_path ?? args?.path);
-	const output = getTextOutput(result, showImages);
-	const lang = !isError && rawPath ? getLanguageFromPath(rawPath) : undefined;
-	const renderedLines = lang ? highlightCode(replaceTabs(output), lang) : output.split("\n");
-	const lines = trimTrailingEmptyLines(renderedLines);
-	const maxLines = options.expanded ? lines.length : 10;
-	const displayLines = lines.slice(0, maxLines);
-	const remaining = lines.length - maxLines;
-	let text = `\n${displayLines.map((line) => (lang ? replaceTabs(line) : theme.fg("toolOutput", replaceTabs(line)))).join("\n")}`;
-	if (remaining > 0) {
-		text += `${theme.fg("muted", `\n... (${remaining} more lines,`)} ${keyHint("app.tools.expand", "to expand")}${theme.fg("muted", ")")}`;
-	}
-
-	const truncation = result.details?.truncation;
+	let text = `\n${theme.fg("toolOutput", summary)}`;
+	const truncation = details?.truncation;
 	if (truncation?.truncated) {
 		if (truncation.firstLineExceedsLimit) {
 			text += `\n${theme.fg("warning", `[First line exceeds ${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit]`)}`;
 		} else if (truncation.truncatedBy === "lines") {
-			text += `\n${theme.fg("warning", `[Truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines (${truncation.maxLines ?? DEFAULT_MAX_LINES} line limit)]`)}`;
+			text += `\n${theme.fg("warning", `[Truncated: read ${truncation.outputLines} of ${truncation.totalLines} lines]`)}`;
 		} else {
-			text += `\n${theme.fg("warning", `[Truncated: ${truncation.outputLines} lines shown (${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)} limit)]`)}`;
+			text += `\n${theme.fg("warning", `[Truncated at ${formatSize(truncation.maxBytes ?? DEFAULT_MAX_BYTES)}]`)}`;
 		}
 	}
 	return text;
@@ -336,11 +330,9 @@ export function createReadToolDefinition(
 			);
 			return text;
 		},
-		renderResult(result, options, theme, context) {
+		renderResult(result, _options, theme, context) {
 			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-			text.setText(
-				formatReadResult(context.args, result, options, theme, context.showImages, context.cwd, context.isError),
-			);
+			text.setText(formatReadResult(result, theme, context.isError));
 			return text;
 		},
 	};
