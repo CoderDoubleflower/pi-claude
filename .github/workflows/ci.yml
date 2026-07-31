@@ -83,52 +83,28 @@ jobs:
                   print()
           PY
 
-          python3 <<'PY'
-          from pathlib import Path
+          cat > /tmp/adapt-markdown-tests.sh <<'ADAPT'
+          sed -i "s/availableWidth: 78/availableWidth: 77/g" packages/coding-agent/test/assistant-message.test.ts
+          sed -i "s/answer (78)/answer (77)/g" packages/coding-agent/test/assistant-message.test.ts
+          sed -i "s/answer (58)/answer (57)/g" packages/coding-agent/test/assistant-message.test.ts
+          sed -i "s/\[78, 58\]/[77, 57]/g" packages/coding-agent/test/assistant-message.test.ts
+          sed -i "s/availableWidth: 78/availableWidth: 77/g" packages/coding-agent/test/user-message.test.ts
+          ADAPT
 
-          script = Path('/tmp/integrate-markdown-transformer.sh')
-          text = script.read_text()
-          marker = 'unresolved="$(git diff --name-only --diff-filter=U)"'
-          adaptation = '''python3 <<'PYTEST'
-          from pathlib import Path
+          awk '
+            BEGIN {
+              while ((getline line < "/tmp/adapt-markdown-tests.sh") > 0) {
+                adaptation = adaptation line ORS
+              }
+            }
+            /^unresolved=/ { printf "%s", adaptation }
+            { print }
+          ' /tmp/integrate-markdown-transformer.sh > /tmp/integrate-markdown-transformer.next.sh
+          mv /tmp/integrate-markdown-transformer.next.sh /tmp/integrate-markdown-transformer.sh
 
-          assistant_test = Path("packages/coding-agent/test/assistant-message.test.ts")
-          assistant_text = assistant_test.read_text()
-          assistant_text = assistant_text.replace('availableWidth: 78', 'availableWidth: 77')
-          assistant_text = assistant_text.replace('answer (78)', 'answer (77)')
-          assistant_text = assistant_text.replace('answer (58)', 'answer (57)')
-          assistant_text = assistant_text.replace('[78, 58]', '[77, 57]')
-          assistant_test.write_text(assistant_text)
-
-          user_test = Path("packages/coding-agent/test/user-message.test.ts")
-          user_test.write_text(user_test.read_text().replace('availableWidth: 78', 'availableWidth: 77'))
-          PYTEST
-
-          '''
-          if marker not in text:
-              raise SystemExit('Could not find conflict-check insertion point')
-          text = text.replace(marker, adaptation + marker, 1)
-          old_tests = '''  packages/coding-agent/test/extensions-runner.test.ts \\
-            packages/coding-agent/test/extensions-discovery.test.ts \\
-            packages/tui/test/markdown.test.ts
-          npm run check:package-smoke'''
-          # Extraction removes the workflow indentation, so accept that form too.
-          extracted_tests = '''  packages/coding-agent/test/extensions-runner.test.ts \\
-  packages/coding-agent/test/extensions-discovery.test.ts \\
-  packages/tui/test/markdown.test.ts
-npm run check:package-smoke'''
-          replacement = '''  packages/coding-agent/test/extensions-runner.test.ts \\
-  packages/coding-agent/test/extensions-discovery.test.ts
-npm test --workspace=@earendil-works/pi-tui
-npm run check:package-smoke'''
-          if extracted_tests in text:
-              text = text.replace(extracted_tests, replacement, 1)
-          elif old_tests in text:
-              text = text.replace(old_tests, replacement, 1)
-          else:
-              raise SystemExit('Could not adapt focused test commands')
-          script.write_text(text)
-          PY
+          sed -i '/packages\/tui\/test\/markdown.test.ts/d' /tmp/integrate-markdown-transformer.sh
+          sed -i 's#packages/coding-agent/test/extensions-discovery.test.ts \\#packages/coding-agent/test/extensions-discovery.test.ts#' /tmp/integrate-markdown-transformer.sh
+          sed -i '/^npm run check:package-smoke/i npm test --workspace=@earendil-works/pi-tui' /tmp/integrate-markdown-transformer.sh
 
           rm -f .github/markdown-transformer-retry
           chmod +x /tmp/integrate-markdown-transformer.sh
