@@ -36,6 +36,20 @@ jobs:
           end = workflow.index(end_marker, start)
           lines = workflow[start:end].splitlines()
           script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
+
+          broken_start = script.index('replace_event_old =')
+          broken_end = script.index('continuation_pattern =', broken_start)
+          repaired_event_patch = (
+              'event_marker = "\\t\\t\\twillRetry: boolean;\\n\\t\\t\\terrorMessage?: string;"\n'
+              'if agent.count(event_marker) != 1:\n'
+              '    raise RuntimeError("compaction event type did not match")\n'
+              'agent = agent.replace(\n'
+              '    event_marker,\n'
+              '    "\\t\\t\\twillRetry: boolean;\\n\\t\\t\\twillContinue?: boolean;\\n\\t\\t\\terrorMessage?: string;",\n'
+              '    1,\n'
+              ')\n\n'
+          )
+          script = script[:broken_start] + repaired_event_patch + script[broken_end:]
           Path('/tmp/apply_compaction_fix.py').write_text(script)
           PY
           python /tmp/apply_compaction_fix.py
