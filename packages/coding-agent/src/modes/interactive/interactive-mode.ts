@@ -110,6 +110,12 @@ import { AssistantMessageComponent } from "./components/assistant-message.ts";
 import { BashExecutionComponent } from "./components/bash-execution.ts";
 import { BorderedLoader } from "./components/bordered-loader.ts";
 import { BranchSummaryMessageComponent } from "./components/branch-summary-message.ts";
+import {
+	CLAUDE_TURN_DURATION_ENTRY_TYPE,
+	ClaudeTurnDurationMessageComponent,
+	getClaudeTurnDurationMs,
+} from "./components/claude-turn-duration.ts";
+import { shouldShowClaudeTurnDuration } from "./components/claude-working.ts";
 import { CompactionSummaryMessageComponent } from "./components/compaction-summary-message.ts";
 import { CustomEditor } from "./components/custom-editor.ts";
 import { CustomEntryComponent } from "./components/custom-entry.ts";
@@ -136,7 +142,6 @@ import { SkillInvocationMessageComponent } from "./components/skill-invocation-m
 import {
 	BranchSummaryStatusIndicator,
 	CompactionStatusIndicator,
-	CompletedStatusIndicator,
 	IdleStatus,
 	RetryStatusIndicator,
 	type StatusIndicator,
@@ -2947,7 +2952,7 @@ export class InteractiveMode {
 
 		switch (event.type) {
 			case "agent_start":
-				this.agentStartedAt = Date.now();
+				this.agentStartedAt ??= Date.now();
 				this.pendingTools.clear();
 				if (typeof this.resetToolActivityState === "function") this.resetToolActivityState();
 				if (this.settingsManager.getShowTerminalProgress()) {
@@ -3179,12 +3184,10 @@ export class InteractiveMode {
 				}
 				const agentDurationMs =
 					this.agentStartedAt === undefined ? undefined : Math.max(0, Date.now() - this.agentStartedAt);
-				this.agentStartedAt = undefined;
-				if (this.workingVisible && agentDurationMs !== undefined) {
-					this.showStatusIndicator(new CompletedStatusIndicator(this.ui, agentDurationMs));
-				} else {
-					this.clearStatusIndicator("working");
+				if (!event.willRetry) {
+					this.agentStartedAt = undefined;
 				}
+				this.clearStatusIndicator("working");
 				if (this.streamingComponent) {
 					this.chatContainer.removeChild(this.streamingComponent);
 					this.streamingComponent = undefined;
@@ -3192,6 +3195,32 @@ export class InteractiveMode {
 				}
 				this.pendingTools.clear();
 				if (typeof this.resetToolActivityState === "function") this.resetToolActivityState();
+
+				let finalAssistantMessage: AssistantMessage | undefined;
+				for (let index = event.messages.length - 1; index >= 0; index--) {
+					const message = event.messages[index];
+					if (message?.role === "assistant") {
+						finalAssistantMessage = message;
+						break;
+					}
+				}
+				const wasAborted = finalAssistantMessage?.stopReason === "aborted";
+				if (
+					agentDurationMs !== undefined &&
+					shouldShowClaudeTurnDuration({
+						durationMs: agentDurationMs,
+						aborted: wasAborted,
+						willRetry: event.willRetry,
+					})
+				) {
+					const entryId = this.sessionManager.appendCustomEntry(CLAUDE_TURN_DURATION_ENTRY_TYPE, {
+						durationMs: agentDurationMs,
+					});
+					const entry = this.sessionManager.getEntry(entryId);
+					if (entry?.type === "custom") {
+						this.addCustomEntryToChat(entry);
+					}
+				}
 
 				this.ui.requestRender();
 				break;
@@ -3347,6 +3376,12 @@ export class InteractiveMode {
 	}
 
 	private addCustomEntryToChat(entry: Extract<SessionEntry, { type: "custom" }>): void {
+		const turnDurationMs = getClaudeTurnDurationMs(entry);
+		if (turnDurationMs !== undefined) {
+			this.chatContainer.addChild(new ClaudeTurnDurationMessageComponent(turnDurationMs));
+			return;
+		}
+
 		const renderer = this.session.extensionRunner.getEntryRenderer(entry.customType);
 		if (!renderer) {
 			return;

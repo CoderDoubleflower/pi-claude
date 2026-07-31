@@ -1,14 +1,7 @@
 import { type Component, Loader, type TUI } from "@earendil-works/pi-tui";
 import type { WorkingIndicatorOptions } from "../../../core/extensions/index.ts";
 import { theme } from "../theme/theme.ts";
-import {
-	CLAUDE_COMPLETED_INDICATOR,
-	CLAUDE_WORKING_INDICATOR,
-	colorClaudeWorkingText,
-	createClaudeCompletedMessage,
-	createClaudeWorkingMessage,
-	formatClaudeTurnDuration,
-} from "./claude-working.ts";
+import { CLAUDE_WORKING_INDICATOR, colorClaudeWorkingText, createClaudeWorkingMessage } from "./claude-working.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 import { keyText } from "./keybinding-hints.ts";
 
@@ -24,7 +17,7 @@ function resolveWorkingMessage(message: string | undefined, defaultMessage: stri
 	return message;
 }
 
-export type StatusIndicatorKind = "working" | "completed" | "retry" | "compaction" | "branchSummary";
+export type StatusIndicatorKind = "working" | "retry" | "compaction" | "branchSummary";
 
 export class StatusIndicator extends Loader {
 	readonly kind: StatusIndicatorKind;
@@ -68,19 +61,6 @@ export class WorkingStatusIndicator extends StatusIndicator {
 
 	override setMessage(message: string): void {
 		super.setMessage(resolveWorkingMessage(message, this.defaultMessage));
-	}
-}
-
-export class CompletedStatusIndicator extends StatusIndicator {
-	constructor(ui: TUI, durationMs: number) {
-		super(
-			"completed",
-			ui,
-			colorClaudeWorkingText,
-			colorClaudeWorkingText,
-			createClaudeCompletedMessage() + " for " + formatClaudeTurnDuration(durationMs),
-			CLAUDE_COMPLETED_INDICATOR,
-		);
 	}
 }
 
