@@ -1,1 +1,2 @@
 Trigger the verified v0.83.3 hotfix release workflow.
+Retry after restoring the runner system PATH for npm's git subprocess.
