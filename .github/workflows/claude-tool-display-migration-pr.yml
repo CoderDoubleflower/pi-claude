@@ -94,7 +94,13 @@ jobs:
 
       - name: Run coding-agent tests
         if: steps.migration.outputs.needed == 'true'
-        run: npm test --workspace=@doubleflower/pi-claude
+        shell: bash
+        run: |
+          set +e
+          npm test --workspace=@doubleflower/pi-claude > /tmp/coding-agent-tests.log 2>&1
+          status=$?
+          tail -n 160 /tmp/coding-agent-tests.log
+          exit $status
 
       - name: Remove one-off migration files
         if: steps.migration.outputs.needed == 'true'
