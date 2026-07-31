@@ -88,22 +88,21 @@ jobs:
 
           path = Path('/tmp/integrate-markdown-transformer.sh')
           text = path.read_text()
-          old = '''    if old not in text:
-        raise SystemExit(f"Expected snippet not found in {path}: {old[:100]!r}")'''
-          new = '''    if old not in text:
-        print(f"Skipping already-applied or non-matching snippet in {path}")
-        return'''
+          old = "    if old not in text:\n        raise SystemExit(f\"Expected snippet not found in {path}: {old[:100]!r}\")"
+          new = "    if old not in text:\n        print(f\"Skipping already-applied or non-matching snippet in {path}\")\n        return"
           if old not in text:
               raise SystemExit('Could not patch replace_once helper')
           text = text.replace(old, new, 1)
           old_install = 'npm ci --ignore-scripts'
-          new_install = '''sudo apt-get update
-          sudo apt-get install -y ripgrep fd-find
-          sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd
-          rg --version
-          fd --version
-
-          npm ci --ignore-scripts'''
+          new_install = "\n".join([
+              'sudo apt-get update',
+              'sudo apt-get install -y ripgrep fd-find',
+              'sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd',
+              'rg --version',
+              'fd --version',
+              '',
+              'npm ci --ignore-scripts',
+          ])
           if old_install not in text:
               raise SystemExit('Could not patch test prerequisites')
           path.write_text(text.replace(old_install, new_install, 1))
