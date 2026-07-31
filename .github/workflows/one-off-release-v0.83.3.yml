@@ -1,0 +1,242 @@
+name: One-off Release v0.83.3
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/one-off-release-v0.83.3.yml
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: one-off-release-v0.83.3
+  cancel-in-progress: false
+
+jobs:
+  prepare-and-trigger:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: 0.83.3
+      RELEASE_TAG: v0.83.3
+      WORKFLOW_PATH: .github/workflows/one-off-release-v0.83.3.yml
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Guard release state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_version="$(node -p "require('./packages/coding-agent/package.json').version")"
+          test "${current_version}" = "0.83.2"
+
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "::error::${RELEASE_TAG} already exists."
+            exit 1
+          fi
+
+          if npm view "@doubleflower/pi-claude@${RELEASE_VERSION}" version >/dev/null 2>&1; then
+            echo "::error::@doubleflower/pi-claude@${RELEASE_VERSION} is already published."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Prepare version metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+
+          const oldVersion = '0.83.2';
+          const newVersion = '0.83.3';
+          const packageName = '@doubleflower/pi-claude';
+
+          function readJson(path) {
+            return JSON.parse(fs.readFileSync(path, 'utf8'));
+          }
+
+          function writeJson(path, value) {
+            fs.writeFileSync(path, `${JSON.stringify(value, null, '\t')}\n`);
+          }
+
+          function expectEqual(actual, expected, label) {
+            if (actual !== expected) {
+              throw new Error(`${label}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+            }
+          }
+
+          {
+            const path = 'packages/coding-agent/package.json';
+            const json = readJson(path);
+            expectEqual(json.version, oldVersion, `${path} version`);
+            json.version = newVersion;
+            writeJson(path, json);
+          }
+
+          {
+            const path = 'packages/coding-agent/npm-shrinkwrap.json';
+            const json = readJson(path);
+            expectEqual(json.version, oldVersion, `${path} version`);
+            expectEqual(json.packages[''].version, oldVersion, `${path} root package version`);
+            json.version = newVersion;
+            json.packages[''].version = newVersion;
+            writeJson(path, json);
+          }
+
+          {
+            const path = 'packages/coding-agent/install-lock/package.json';
+            const json = readJson(path);
+            expectEqual(json.version, oldVersion, `${path} version`);
+            expectEqual(json.dependencies[packageName], oldVersion, `${path} dependency`);
+            json.version = newVersion;
+            json.dependencies[packageName] = newVersion;
+            writeJson(path, json);
+          }
+
+          {
+            const path = 'packages/coding-agent/install-lock/package-lock.json';
+            const json = readJson(path);
+            const entry = json.packages[`node_modules/${packageName}`];
+            expectEqual(json.version, oldVersion, `${path} version`);
+            expectEqual(json.packages[''].version, oldVersion, `${path} root package version`);
+            expectEqual(json.packages[''].dependencies[packageName], oldVersion, `${path} root dependency`);
+            expectEqual(entry.version, oldVersion, `${path} installed version`);
+            json.version = newVersion;
+            json.packages[''].version = newVersion;
+            json.packages[''].dependencies[packageName] = newVersion;
+            entry.version = newVersion;
+            entry.resolved = `https://registry.npmjs.org/${packageName}/-/pi-claude-${newVersion}.tgz`;
+            writeJson(path, json);
+          }
+
+          {
+            const path = 'packages/evals/package.json';
+            const json = readJson(path);
+            expectEqual(json.devDependencies[packageName], `^${oldVersion}`, `${path} dependency`);
+            json.devDependencies[packageName] = `^${newVersion}`;
+            writeJson(path, json);
+          }
+
+          {
+            const path = 'packages/server/package.json';
+            const json = readJson(path);
+            expectEqual(json.dependencies[packageName], `^${oldVersion}`, `${path} dependency`);
+            json.dependencies[packageName] = `^${newVersion}`;
+            writeJson(path, json);
+          }
+
+          {
+            const path = 'package-lock.json';
+            const json = readJson(path);
+            const codingAgent = json.packages['packages/coding-agent'];
+            const evals = json.packages['packages/evals'];
+            const server = json.packages['packages/server'];
+            expectEqual(codingAgent.version, oldVersion, `${path} coding-agent version`);
+            expectEqual(evals.devDependencies[packageName], `^${oldVersion}`, `${path} eval dependency`);
+            expectEqual(server.dependencies[packageName], `^${oldVersion}`, `${path} server dependency`);
+            codingAgent.version = newVersion;
+            evals.devDependencies[packageName] = `^${newVersion}`;
+            server.dependencies[packageName] = `^${newVersion}`;
+            writeJson(path, json);
+          }
+
+          {
+            const path = 'packages/coding-agent/CHANGELOG.md';
+            const bullet = '- Fixed published npm installs failing at startup when the bundled 0.83.0 runtime packages predate newer workspace exports.';
+            const nextRelease = '## [0.83.0] - 2026-07-29';
+            let changelog = fs.readFileSync(path, 'utf8');
+            if (!changelog.includes(bullet)) throw new Error('Release changelog bullet is missing');
+            if (changelog.includes('## [0.83.3]')) throw new Error('0.83.3 changelog section already exists');
+            changelog = changelog.replace(`${bullet}\n`, '');
+            const section = `## [0.83.3] - 2026-07-31\n\n### Fixed\n\n${bullet}\n\n`;
+            if (!changelog.includes(nextRelease)) throw new Error('Unable to locate changelog insertion point');
+            changelog = changelog.replace(nextRelease, `${section}${nextRelease}`);
+            fs.writeFileSync(path, changelog);
+          }
+          NODE
+
+          rm "${WORKFLOW_PATH}"
+
+      - name: Build
+        run: npm run build
+
+      - name: Check
+        run: npm run check
+
+      - name: Test
+        run: npm test
+
+      - name: Verify packed npm installation
+        run: npm run check:package-smoke
+
+      - name: Commit release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add \
+            package-lock.json \
+            packages/coding-agent/CHANGELOG.md \
+            packages/coding-agent/install-lock/package-lock.json \
+            packages/coding-agent/install-lock/package.json \
+            packages/coding-agent/npm-shrinkwrap.json \
+            packages/coding-agent/package.json \
+            packages/evals/package.json \
+            packages/server/package.json \
+            "${WORKFLOW_PATH}"
+
+          expected="$(printf '%s\n' \
+            package-lock.json \
+            packages/coding-agent/CHANGELOG.md \
+            packages/coding-agent/install-lock/package-lock.json \
+            packages/coding-agent/install-lock/package.json \
+            packages/coding-agent/npm-shrinkwrap.json \
+            packages/coding-agent/package.json \
+            packages/evals/package.json \
+            packages/server/package.json \
+            "${WORKFLOW_PATH}" | sort)"
+          actual="$(git diff --cached --name-only | sort)"
+          if [[ "${actual}" != "${expected}" ]]; then
+            diff -u <(printf '%s\n' "${expected}") <(printf '%s\n' "${actual}") || true
+            exit 1
+          fi
+
+          git diff --exit-code
+          git diff --cached --check
+          git commit -m "Release pi-claude ${RELEASE_TAG}"
+          git push origin HEAD:main
+
+      - name: Tag and trigger publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_sha="$(git rev-parse HEAD)"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+            --raw-field "ref=refs/tags/${RELEASE_TAG}" \
+            --raw-field "sha=${release_sha}"
+
+          gh workflow run build-binaries.yml \
+            --repo "${GITHUB_REPOSITORY}" \
+            --ref main \
+            --raw-field "tag=${RELEASE_TAG}" \
+            --raw-field "source_ref=${RELEASE_TAG}"
