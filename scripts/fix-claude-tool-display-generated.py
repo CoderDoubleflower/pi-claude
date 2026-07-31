@@ -102,7 +102,8 @@ describe("Claude-style tool presentation", () => {
 		group.markStarted("grep-1");
 		let output = render(group);
 		expect(output).toContain("Searching for 1 pattern, reading 1 file");
-		expect(output).toContain("renderToolUse");
+		// Claude keeps the first hint visible for at least 700ms to avoid flicker.
+		expect(output).toContain("src/a.ts");
 
 		group.markCompleted("read-1", false);
 		group.markCompleted("grep-1", false);
@@ -125,3 +126,7 @@ describe("Claude-style tool presentation", () => {
 ''',
     encoding="utf-8",
 )
+
+behavior_script = root / "scripts/repair-claude-tool-display-behavior.py"
+exec(compile(behavior_script.read_text(encoding="utf-8"), str(behavior_script), "exec"))
+behavior_script.unlink()
