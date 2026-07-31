@@ -70,6 +70,10 @@ jobs:
             packages/coding-agent/test/bash-command-rendering.test.ts \
             packages/coding-agent/test/claude-tool-display.test.ts
 
+      - name: Build repository
+        if: steps.migration.outputs.needed == 'true'
+        run: npm run build
+
       - name: TypeScript check
         if: steps.migration.outputs.needed == 'true'
         shell: bash
@@ -91,10 +95,6 @@ jobs:
       - name: Run coding-agent tests
         if: steps.migration.outputs.needed == 'true'
         run: npm test --workspace=@doubleflower/pi-claude
-
-      - name: Build repository
-        if: steps.migration.outputs.needed == 'true'
-        run: npm run build
 
       - name: Remove one-off migration files
         if: steps.migration.outputs.needed == 'true'
