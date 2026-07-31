@@ -6,9 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-permissions:
-  contents: write
-
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -43,47 +40,3 @@ jobs:
 
       - name: Test
         run: npm test
-
-  integrate-markdown-transformer:
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'feat/markdown-transformer-api'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout feature branch
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: feat/markdown-transformer-api
-          fetch-depth: 0
-
-      - name: Detect pending integration
-        id: gate
-        shell: bash
-        run: |
-          if [ -f .github/workflows/one-off-integrate-markdown-transformer.yml ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Apply and validate isolated upstream feature
-        if: steps.gate.outputs.run == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 <<'PY' > /tmp/integrate-markdown-transformer.sh
-          from pathlib import Path
-
-          lines = Path('.github/workflows/one-off-integrate-markdown-transformer.yml').read_text().splitlines()
-          start = next(i for i, line in enumerate(lines) if line == '        run: |') + 1
-          for line in lines[start:]:
-              if line.startswith('          '):
-                  print(line[10:])
-              elif line.strip():
-                  raise SystemExit(f'Unexpected workflow content after run block: {line!r}')
-              else:
-                  print()
-          PY
-
-          node .github/adapt-markdown-integration.mjs /tmp/integrate-markdown-transformer.sh
-          rm -f .github/adapt-markdown-integration.mjs .github/markdown-transformer-retry
-          chmod +x /tmp/integrate-markdown-transformer.sh
-          bash /tmp/integrate-markdown-transformer.sh
