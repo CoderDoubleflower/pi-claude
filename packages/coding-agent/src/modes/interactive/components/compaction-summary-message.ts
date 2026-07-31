@@ -1,59 +1,41 @@
-import { Box, Markdown, type MarkdownTheme, Spacer, Text } from "@earendil-works/pi-tui";
+import { type Component, type MarkdownTheme, Text, visibleWidth } from "@earendil-works/pi-tui";
 import type { CompactionSummaryMessage } from "../../../core/messages.ts";
-import { getMarkdownTheme, theme } from "../theme/theme.ts";
+import { theme } from "../theme/theme.ts";
 import { keyText } from "./keybinding-hints.ts";
+import { MessageMarkerComponent } from "./message-marker.ts";
 
-/**
- * Component that renders a compaction message with collapsed/expanded state.
- * Uses same background color as custom messages for visual consistency.
- */
-export class CompactionSummaryMessageComponent extends Box {
+const COMPACT_SUMMARY_MARKER = "●";
+const MESSAGE_RESPONSE_PREFIX = "  ⎿  ";
+
+/** Render Claude Code's compact-summary transcript row. */
+export class CompactionSummaryMessageComponent implements Component {
 	private expanded = false;
-	private message: CompactionSummaryMessage;
-	private markdownTheme: MarkdownTheme;
+	private readonly message: CompactionSummaryMessage;
 
-	constructor(message: CompactionSummaryMessage, markdownTheme: MarkdownTheme = getMarkdownTheme()) {
-		super(1, 1, (t) => theme.bg("customMessageBg", t));
+	constructor(message: CompactionSummaryMessage, _markdownTheme?: MarkdownTheme) {
 		this.message = message;
-		this.markdownTheme = markdownTheme;
-		this.updateDisplay();
 	}
 
 	setExpanded(expanded: boolean): void {
 		this.expanded = expanded;
-		this.updateDisplay();
 	}
 
-	override invalidate(): void {
-		super.invalidate();
-		this.updateDisplay();
+	render(width: number): string[] {
+		const hint = this.expanded ? "" : theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`);
+		const heading = new MessageMarkerComponent(
+			new Text(theme.bold(theme.fg("text", "Compact summary")) + hint, 0, 0),
+			theme.fg("text", COMPACT_SUMMARY_MARKER),
+		);
+		const lines = ["", ...heading.render(width)];
+		if (!this.expanded) return lines;
+
+		const prefix = theme.fg("dim", MESSAGE_RESPONSE_PREFIX);
+		const prefixWidth = visibleWidth(prefix);
+		const continuationPrefix = " ".repeat(prefixWidth);
+		const body = new Text(this.message.summary, 0, 0).render(Math.max(1, width - prefixWidth));
+		lines.push(...body.map((line, index) => `${index === 0 ? prefix : continuationPrefix}${line}`));
+		return lines;
 	}
 
-	private updateDisplay(): void {
-		this.clear();
-
-		const tokenStr = this.message.tokensBefore.toLocaleString();
-		const label = theme.fg("customMessageLabel", `\x1b[1m[compaction]\x1b[22m`);
-		this.addChild(new Text(label, 0, 0));
-		this.addChild(new Spacer(1));
-
-		if (this.expanded) {
-			const header = `**Compacted from ${tokenStr} tokens**\n\n`;
-			this.addChild(
-				new Markdown(header + this.message.summary, 0, 0, this.markdownTheme, {
-					color: (text: string) => theme.fg("customMessageText", text),
-				}),
-			);
-		} else {
-			this.addChild(
-				new Text(
-					theme.fg("customMessageText", `Compacted from ${tokenStr} tokens (`) +
-						theme.fg("dim", keyText("app.tools.expand")) +
-						theme.fg("customMessageText", " to expand)"),
-					0,
-					0,
-				),
-			);
-		}
-	}
+	invalidate(): void {}
 }

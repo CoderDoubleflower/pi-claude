@@ -77,7 +77,6 @@ import type {
 import { FooterDataProvider, type ReadonlyFooterDataProvider } from "../../core/footer-data-provider.ts";
 import { configureHttpDispatcher, formatHttpIdleTimeoutMs } from "../../core/http-dispatcher.ts";
 import { type AppKeybinding, KeybindingsManager } from "../../core/keybindings.ts";
-import { createCompactionSummaryMessage } from "../../core/messages.ts";
 import {
 	defaultModelPerProvider,
 	findExactModelReferenceMatch,
@@ -378,6 +377,7 @@ export class InteractiveMode {
 	private workingIndicatorOptions: WorkingIndicatorOptions | undefined = undefined;
 	private readonly defaultWorkingMessage = "Working...";
 	private agentStartedAt: number | undefined = undefined;
+	private lastAgentEndAssistantMessage: AssistantMessage | undefined = undefined;
 	private readonly defaultHiddenThinkingLabel = "Thinking...";
 	private hiddenThinkingLabel = this.defaultHiddenThinkingLabel;
 
@@ -2952,6 +2952,9 @@ export class InteractiveMode {
 
 		switch (event.type) {
 			case "agent_start":
+				if (this.agentStartedAt === undefined) {
+					this.lastAgentEndAssistantMessage = undefined;
+				}
 				this.agentStartedAt ??= Date.now();
 				this.pendingTools.clear();
 				if (typeof this.resetToolActivityState === "function") this.resetToolActivityState();
@@ -3179,15 +3182,6 @@ export class InteractiveMode {
 			}
 
 			case "agent_end": {
-				if (this.settingsManager.getShowTerminalProgress()) {
-					this.ui.terminal.setProgress(false);
-				}
-				const agentDurationMs =
-					this.agentStartedAt === undefined ? undefined : Math.max(0, Date.now() - this.agentStartedAt);
-				if (!event.willRetry) {
-					this.agentStartedAt = undefined;
-				}
-				this.clearStatusIndicator("working");
 				if (this.streamingComponent) {
 					this.chatContainer.removeChild(this.streamingComponent);
 					this.streamingComponent = undefined;
@@ -3196,21 +3190,35 @@ export class InteractiveMode {
 				this.pendingTools.clear();
 				if (typeof this.resetToolActivityState === "function") this.resetToolActivityState();
 
-				let finalAssistantMessage: AssistantMessage | undefined;
 				for (let index = event.messages.length - 1; index >= 0; index--) {
 					const message = event.messages[index];
 					if (message?.role === "assistant") {
-						finalAssistantMessage = message;
+						this.lastAgentEndAssistantMessage = message;
 						break;
 					}
 				}
-				const wasAborted = finalAssistantMessage?.stopReason === "aborted";
+
+				this.ui.requestRender();
+				break;
+			}
+
+			case "agent_settled": {
+				if (this.settingsManager.getShowTerminalProgress()) {
+					this.ui.terminal.setProgress(false);
+				}
+				const agentDurationMs =
+					this.agentStartedAt === undefined ? undefined : Math.max(0, Date.now() - this.agentStartedAt);
+				this.agentStartedAt = undefined;
+				this.clearStatusIndicator();
+
+				const wasAborted = this.lastAgentEndAssistantMessage?.stopReason === "aborted";
+				this.lastAgentEndAssistantMessage = undefined;
 				if (
 					agentDurationMs !== undefined &&
 					shouldShowClaudeTurnDuration({
 						durationMs: agentDurationMs,
 						aborted: wasAborted,
-						willRetry: event.willRetry,
+						willRetry: false,
 					})
 				) {
 					const entryId = this.sessionManager.appendCustomEntry(CLAUDE_TURN_DURATION_ENTRY_TYPE, {
@@ -3223,12 +3231,9 @@ export class InteractiveMode {
 				}
 
 				this.ui.requestRender();
-				break;
-			}
-
-			case "agent_settled":
 				await this.checkShutdownRequested();
 				break;
+			}
 
 			case "compaction_start": {
 				if (this.settingsManager.getShowTerminalProgress()) {
@@ -3245,7 +3250,7 @@ export class InteractiveMode {
 			}
 
 			case "compaction_end": {
-				if (this.settingsManager.getShowTerminalProgress()) {
+				if (this.settingsManager.getShowTerminalProgress() && !this.session.isStreaming) {
 					this.ui.terminal.setProgress(false);
 				}
 				if (this.autoCompactionEscapeHandler) {
@@ -3262,13 +3267,6 @@ export class InteractiveMode {
 				} else if (event.result) {
 					this.chatContainer.clear();
 					this.rebuildChatFromMessages();
-					this.addMessageToChat(
-						createCompactionSummaryMessage(
-							event.result.summary,
-							event.result.tokensBefore,
-							new Date().toISOString(),
-						),
-					);
 					this.footer.invalidate();
 				} else if (event.errorMessage) {
 					if (event.reason === "manual") {
@@ -3277,6 +3275,15 @@ export class InteractiveMode {
 						this.chatContainer.addChild(new Spacer(1));
 						this.chatContainer.addChild(new Text(theme.fg("error", event.errorMessage), 1, 0));
 					}
+				}
+				if (event.willContinue && this.workingVisible) {
+					this.showStatusIndicator(
+						new WorkingStatusIndicator(
+							this.ui,
+							this.workingMessage ?? this.defaultWorkingMessage,
+							this.workingIndicatorOptions,
+						),
+					);
 				}
 				void this.flushCompactionQueue({ willRetry: event.willRetry });
 				this.ui.requestRender();

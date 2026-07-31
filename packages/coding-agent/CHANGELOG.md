@@ -13,6 +13,7 @@
 
 ### Fixed
 
+- Fixed mid-task compaction to remain visibly active, use Claude Code's compaction spinner and compact-summary transcript row, finalize task duration only after all continuations settle, and keep context usage finite after compaction.
 - Fixed published npm installs failing at startup when the bundled 0.83.0 runtime packages predate newer workspace exports.
 - Fixed `setToolsExpanded(false)` to be a no-op when tool output is already collapsed, avoiding redundant `Tool output: collapsed` startup notices from extensions ([#7292](https://github.com/earendil-works/pi/issues/7292)).
 

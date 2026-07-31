@@ -99,18 +99,14 @@ export class RetryStatusIndicator extends StatusIndicator {
 export type CompactionStatusReason = "manual" | "threshold" | "overflow";
 
 export class CompactionStatusIndicator extends StatusIndicator {
-	constructor(ui: TUI, reason: CompactionStatusReason) {
-		const cancelHint = `(${keyText("app.interrupt")} to cancel)`;
-		const label =
-			reason === "manual"
-				? `Compacting context... ${cancelHint}`
-				: `${reason === "overflow" ? "Context overflow detected, " : ""}Auto-compacting... ${cancelHint}`;
+	constructor(ui: TUI, _reason: CompactionStatusReason) {
 		super(
 			"compaction",
 			ui,
-			(spinner) => theme.fg("accent", spinner),
-			(text) => theme.fg("muted", text),
-			label,
+			colorClaudeWorkingText,
+			colorClaudeWorkingText,
+			"Compacting conversation…",
+			CLAUDE_WORKING_INDICATOR,
 		);
 	}
 }
