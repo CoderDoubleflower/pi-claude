@@ -1,0 +1,126 @@
+name: PR-triggered Release v0.83.3
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  actions: write
+  contents: write
+
+concurrency:
+  group: pr-release-v0.83.3
+  cancel-in-progress: false
+
+jobs:
+  prepare-and-trigger:
+    if: github.event.pull_request.title == 'Trigger verified v0.83.3 hotfix release' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_VERSION: 0.83.3
+      RELEASE_TAG: v0.83.3
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      - name: Guard release state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(node -p "require('./packages/coding-agent/package.json').version")" = "0.83.2"
+
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "::error::${RELEASE_TAG} already exists."
+            exit 1
+          fi
+
+          if npm view "@doubleflower/pi-claude@${RELEASE_VERSION}" version >/dev/null 2>&1; then
+            echo "::error::@doubleflower/pi-claude@${RELEASE_VERSION} is already published."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Prepare release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/prepare-v0.83.3.mjs
+          rm \
+            .github/workflows/one-off-release-v0.83.3.yml \
+            .github/workflows/pr-release-v0.83.3.yml \
+            scripts/prepare-v0.83.3.mjs
+
+      - name: Build
+        run: npm run build
+
+      - name: Check
+        run: npm run check
+
+      - name: Test
+        run: npm test
+
+      - name: Verify packed npm installation
+        run: npm run check:package-smoke
+
+      - name: Commit release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          expected_files=(
+            .github/workflows/one-off-release-v0.83.3.yml
+            .github/workflows/pr-release-v0.83.3.yml
+            package-lock.json
+            packages/coding-agent/CHANGELOG.md
+            packages/coding-agent/install-lock/package-lock.json
+            packages/coding-agent/install-lock/package.json
+            packages/coding-agent/npm-shrinkwrap.json
+            packages/coding-agent/package.json
+            packages/evals/package.json
+            packages/server/package.json
+            scripts/prepare-v0.83.3.mjs
+          )
+
+          git add "${expected_files[@]}"
+          expected="$(printf '%s\n' "${expected_files[@]}" | sort)"
+          actual="$(git diff --cached --name-only | sort)"
+          if [[ "${actual}" != "${expected}" ]]; then
+            diff -u <(printf '%s\n' "${expected}") <(printf '%s\n' "${actual}") || true
+            exit 1
+          fi
+
+          git diff --exit-code
+          git diff --cached --check
+          git commit -m "Release pi-claude ${RELEASE_TAG}"
+          git push origin HEAD:main
+
+      - name: Tag and trigger publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_sha="$(git rev-parse HEAD)"
+          gh api --method POST "repos/${GITHUB_REPOSITORY}/git/refs" \
+            --raw-field "ref=refs/tags/${RELEASE_TAG}" \
+            --raw-field "sha=${release_sha}"
+
+          gh workflow run build-binaries.yml \
+            --repo "${GITHUB_REPOSITORY}" \
+            --ref main \
+            --raw-field "tag=${RELEASE_TAG}" \
+            --raw-field "source_ref=${RELEASE_TAG}"
