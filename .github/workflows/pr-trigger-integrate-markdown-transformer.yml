@@ -34,6 +34,20 @@ jobs:
               else:
                   print()
           PY
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('/tmp/integrate-markdown-transformer.sh')
+          text = path.read_text()
+          old = '''    if old not in text:
+        raise SystemExit(f"Expected snippet not found in {path}: {old[:100]!r}")'''
+          new = '''    if old not in text:
+        print(f"Skipping already-applied or non-matching snippet in {path}")
+        return'''
+          if old not in text:
+              raise SystemExit('Could not patch replace_once helper')
+          path.write_text(text.replace(old, new, 1))
+          PY
           chmod +x /tmp/integrate-markdown-transformer.sh
           rm -f .github/workflows/pr-trigger-integrate-markdown-transformer.yml
           bash /tmp/integrate-markdown-transformer.sh
