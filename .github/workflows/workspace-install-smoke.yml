@@ -33,21 +33,21 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: Build release package
+      - name: Build release packages
         run: npm run build
 
-      - name: Pack coding-agent package
+      - name: Pack runtime packages
         run: |
           mkdir -p artifacts
-          cd packages/coding-agent
-          npm pack --pack-destination ../../artifacts
-          cd ../..
+          for package_dir in packages/tui packages/ai packages/agent packages/coding-agent; do
+            (cd "$package_dir" && npm pack --pack-destination ../../artifacts)
+          done
           ls -lah artifacts
 
-      - name: Upload npm tarball
+      - name: Upload npm tarballs
         uses: actions/upload-artifact@v4
         with:
-          name: pi-claude-npm-tarball
+          name: pi-claude-runtime-tarballs
           path: artifacts/*.tgz
           if-no-files-found: error
           retention-days: 1
