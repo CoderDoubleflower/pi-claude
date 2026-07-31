@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import re
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
@@ -134,12 +133,91 @@ behavior_script.unlink()
 
 index_path = root / "packages/coding-agent/src/core/tools/index.ts"
 index_content = index_path.read_text(encoding="utf-8")
-index_content, replacement_count = re.subn(
-    r'typeof displayArgs\.command === "string" \? displayArgs\.command\.split\([^)]*\) : \[displayArgs\.command\];',
-    'typeof displayArgs.command === "string"\n\t\t\t\t\t? displayArgs.command.split(String.fromCharCode(10))\n\t\t\t\t\t: [displayArgs.command];',
-    index_content,
-    count=1,
-)
-if replacement_count != 1:
-    raise RuntimeError(f"expected one Bash newline splitter, found {replacement_count}")
-index_path.write_text(index_content, encoding="utf-8")
+start_index = index_content.index("class ClaudeBashCallComponent implements Component {")
+end_index = index_content.index("export function createToolDefinition", start_index)
+index_replacement = r'''class ClaudeBashCallComponent implements Component {
+	constructor(private readonly lines: string[]) {}
+
+	render(width: number): string[] {
+		const contentLines = this.lines.filter((line) => stripAnsi(line).trim().length > 0);
+		if (contentLines.length === 0) return [];
+
+		const maxLineWidth = Math.max(1, Math.min(width, BASH_CALL_PREVIEW_MAX_WIDTH));
+		const rendered: string[] = [];
+		let remainingWidth = BASH_CALL_PREVIEW_MAX_WIDTH;
+		let truncated = contentLines.length > BASH_CALL_PREVIEW_MAX_LINES;
+
+		for (const line of contentLines.slice(0, BASH_CALL_PREVIEW_MAX_LINES)) {
+			const allowedWidth = Math.max(1, Math.min(maxLineWidth, remainingWidth));
+			if (visibleWidth(line) > allowedWidth) {
+				rendered.push(truncateToWidth(line, allowedWidth, "…"));
+				truncated = true;
+				break;
+			}
+			rendered.push(line);
+			remainingWidth -= visibleWidth(line);
+			if (remainingWidth <= 0) {
+				truncated = contentLines.length > rendered.length;
+				break;
+			}
+		}
+
+		if (truncated && rendered.length > 0) {
+			const lastIndex = rendered.length - 1;
+			const lastLine = rendered[lastIndex] ?? "";
+			if (!stripAnsi(lastLine).endsWith("…")) {
+				rendered[lastIndex] = truncateToWidth(`${lastLine}…`, maxLineWidth, "…");
+			}
+		}
+		return rendered;
+	}
+}
+
+function createBashDisplayToolDefinition(
+	cwd: string,
+	options?: BashToolOptions,
+): ReturnType<typeof createBashToolDefinition> {
+	const definition = createBashToolDefinition(cwd, options);
+	const renderCall = definition.renderCall;
+	if (!renderCall) return definition;
+
+	return {
+		...definition,
+		renderCall(args, activeTheme, context) {
+			const state = context.state as typeof context.state & BashDisplayState;
+			const executionArgs = getToolExecutionArguments<BashToolInput>(context.toolCallId);
+			if (executionArgs !== undefined) {
+				state.canonicalExecutionArgs = executionArgs;
+			}
+
+			const displayArgs: BashToolInput =
+				state.canonicalExecutionArgs ??
+				(context.executionStarted || !context.isPartial ? args : { command: "" });
+			const lastComponent = context.lastComponent instanceof ClaudeBashCallComponent ? undefined : context.lastComponent;
+
+			if (!context.executionStarted || context.expanded) {
+				return renderCall(displayArgs, activeTheme, { ...context, lastComponent });
+			}
+
+			const commandLines =
+				typeof displayArgs.command === "string"
+					? displayArgs.command.split(String.fromCharCode(10))
+					: [displayArgs.command];
+			const timeoutSuffix =
+				typeof displayArgs.timeout === "number"
+					? activeTheme.fg("muted", ` (timeout ${displayArgs.timeout}s)`)
+					: "";
+			const lines = commandLines.map((command, index) => {
+				const commandDisplay = command && command.length > 0 ? command : "...";
+				return (
+					activeTheme.fg("toolTitle", activeTheme.bold(`$ ${commandDisplay}`)) +
+					(index === 0 ? timeoutSuffix : "")
+				);
+			});
+			return new ClaudeBashCallComponent(lines);
+		},
+	};
+}
+
+'''
+index_path.write_text(index_content[:start_index] + index_replacement + index_content[end_index:], encoding="utf-8")
