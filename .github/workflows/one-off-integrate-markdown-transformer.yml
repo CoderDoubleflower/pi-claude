@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   integrate:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -18,7 +17,7 @@ jobs:
           ref: feat/markdown-transformer-api
           fetch-depth: 0
 
-      - name: Apply upstream PR 7231 while preserving Claude UI
+      - name: Apply reviewed upstream feature
         shell: bash
         run: |
           set -euo pipefail
@@ -26,7 +25,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
           original_head="$(git rev-parse HEAD)"
-          git remote add upstream https://github.com/earendil-works/pi.git
+          git remote add upstream https://github.com/earendil-works/pi.git 2>/dev/null || true
           git fetch --no-tags upstream 714978bf51225520a9b1e153115f0c5ff057be9e
           pr_commit=714978bf51225520a9b1e153115f0c5ff057be9e
           pr_parent="$(git rev-parse "${pr_commit}^1")"
@@ -38,19 +37,10 @@ jobs:
           set -e
           echo "git apply status: ${apply_status}"
 
-          preserve_files=(
-            packages/coding-agent/CHANGELOG.md
-            packages/coding-agent/docs/extensions.md
-            packages/coding-agent/src/core/extensions/loader.ts
-            packages/coding-agent/src/core/extensions/types.ts
-            packages/coding-agent/src/modes/interactive/components/assistant-message.ts
+          for file in \
+            packages/coding-agent/src/modes/interactive/components/assistant-message.ts \
             packages/coding-agent/src/modes/interactive/components/user-message.ts
-            packages/coding-agent/src/modes/interactive/interactive-mode.ts
-            packages/coding-agent/test/assistant-message.test.ts
-            packages/coding-agent/test/extensions-discovery.test.ts
-            packages/coding-agent/test/user-message.test.ts
-          )
-          for file in "${preserve_files[@]}"; do
+          do
             if git diff --name-only --diff-filter=U | grep -Fxq "$file"; then
               git checkout "$original_head" -- "$file"
               git add "$file"
@@ -61,172 +51,84 @@ jobs:
           from pathlib import Path
 
           def replace_once(path: str, old: str, new: str) -> None:
-              p = Path(path)
-              text = p.read_text()
+              file = Path(path)
+              text = file.read_text()
               if new in text:
                   return
               if old not in text:
-                  raise SystemExit(f"Expected snippet not found in {path}: {old[:100]!r}")
-              p.write_text(text.replace(old, new, 1))
+                  raise SystemExit(f"Expected snippet missing in {path}: {old[:100]!r}")
+              file.write_text(text.replace(old, new, 1))
 
-          # Extension API registration.
-          path = "packages/coding-agent/src/core/extensions/loader.ts"
-          replace_once(path, "\tLoadExtensionsResult,\n\tMessageRenderer,", "\tLoadExtensionsResult,\n\tMarkdownTransformer,\n\tMessageRenderer,")
+          assistant = "packages/coding-agent/src/modes/interactive/components/assistant-message.ts"
           replace_once(
-              path,
-              "\t\tregisterMessageRenderer<T>(customType: string, renderer: MessageRenderer<T>): void {\n\t\t\truntime.assertActive();\n\t\t\textension.messageRenderers.set(customType, renderer as MessageRenderer);\n\t\t},\n\n\t\tregisterEntryRenderer<T>",
-              "\t\tregisterMessageRenderer<T>(customType: string, renderer: MessageRenderer<T>): void {\n\t\t\truntime.assertActive();\n\t\t\textension.messageRenderers.set(customType, renderer as MessageRenderer);\n\t\t},\n\n\t\tregisterMarkdownTransformer(transformer: MarkdownTransformer): void {\n\t\t\truntime.assertActive();\n\t\t\textension.markdownTransformer = transformer;\n\t\t},\n\n\t\tregisterEntryRenderer<T>",
-          )
-
-          path = "packages/coding-agent/src/core/extensions/types.ts"
-          replace_once(
-              path,
-              "export interface EntryRenderOptions {",
-              "export interface MarkdownTransformContext {\n\tmessageType: \"user\" | \"assistant\" | \"assistant-thinking\";\n\tisStreaming: boolean;\n\tavailableWidth: number;\n}\n\nexport type MarkdownTransformer = (markdown: string, context: MarkdownTransformContext) => string;\n\nexport interface EntryRenderOptions {",
+              assistant,
+              'import { type Component, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@earendil-works/pi-tui";\nimport { getMarkdownTheme, theme }',
+              'import { type Component, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@earendil-works/pi-tui";\nimport type { MarkdownTransformer } from "../../../core/extensions/types.ts";\nimport { getMarkdownTheme, theme }',
           )
           replace_once(
-              path,
-              "\t/** Register a custom renderer for CustomMessageEntry. */\n\tregisterMessageRenderer<T = unknown>(customType: string, renderer: MessageRenderer<T>): void;\n\n\t/** Register a custom renderer for CustomEntry.",
-              "\t/** Register a custom renderer for CustomMessageEntry. */\n\tregisterMessageRenderer<T = unknown>(customType: string, renderer: MessageRenderer<T>): void;\n\n\t/** Register a transformer for user and assistant Markdown before pi-claude renders it in the interactive transcript. */\n\tregisterMarkdownTransformer(transformer: MarkdownTransformer): void;\n\n\t/** Register a custom renderer for CustomEntry.",
+              assistant,
+              'import { MessageMarkerComponent } from "./message-marker.ts";',
+              'import { createMarkdownTransform } from "./markdown-transform.ts";\nimport { MessageMarkerComponent } from "./message-marker.ts";',
           )
           replace_once(
-              path,
-              "\tmessageRenderers: Map<string, MessageRenderer>;\n\tentryRenderers?",
-              "\tmessageRenderers: Map<string, MessageRenderer>;\n\tmarkdownTransformer?: MarkdownTransformer;\n\tentryRenderers?",
-          )
-
-          # Preserve Claude-style assistant rendering while adding display-only transforms.
-          path = "packages/coding-agent/src/modes/interactive/components/assistant-message.ts"
-          replace_once(
-              path,
-              "import { type Component, Container, Markdown, type MarkdownTheme, Spacer, Text } from \"@earendil-works/pi-tui\";\nimport { getMarkdownTheme, theme }",
-              "import { type Component, Container, Markdown, type MarkdownTheme, Spacer, Text } from \"@earendil-works/pi-tui\";\nimport type { MarkdownTransformer } from \"../../../core/extensions/types.ts\";\nimport { getMarkdownTheme, theme }",
+              assistant,
+              '\tprivate outputPad: number;\n\tprivate lastMessage?: AssistantMessage;',
+              '\tprivate outputPad: number;\n\tprivate markdownTransformers: readonly MarkdownTransformer[];\n\tprivate lastMessage?: AssistantMessage;\n\tprivate isStreaming = false;',
           )
           replace_once(
-              path,
-              "import { MessageMarkerComponent } from \"./message-marker.ts\";",
-              "import { createMarkdownTransform } from \"./markdown-transform.ts\";\nimport { MessageMarkerComponent } from \"./message-marker.ts\";",
+              assistant,
+              '\t\thiddenThinkingLabel = "Thinking...",\n\t\toutputPad = 1,\n\t) {',
+              '\t\thiddenThinkingLabel = "Thinking...",\n\t\toutputPad = 1,\n\t\tmarkdownTransformers: readonly MarkdownTransformer[] = [],\n\t) {',
           )
           replace_once(
-              path,
-              "\tprivate outputPad: number;\n\tprivate lastMessage?: AssistantMessage;",
-              "\tprivate outputPad: number;\n\tprivate markdownTransformers: readonly MarkdownTransformer[];\n\tprivate lastMessage?: AssistantMessage;\n\tprivate isStreaming = false;",
+              assistant,
+              '\t\tthis.outputPad = outputPad;\n\n\t\t// Container for text/thinking content',
+              '\t\tthis.outputPad = outputPad;\n\t\tthis.markdownTransformers = markdownTransformers;\n\n\t\t// Container for text/thinking content',
           )
           replace_once(
-              path,
-              "\t\thiddenThinkingLabel = \"Thinking...\",\n\t\toutputPad = 1,\n\t) {",
-              "\t\thiddenThinkingLabel = \"Thinking...\",\n\t\toutputPad = 1,\n\t\tmarkdownTransformers: readonly MarkdownTransformer[] = [],\n\t) {",
+              assistant,
+              '\tupdateContent(message: AssistantMessage): void {\n\t\tthis.lastMessage = message;',
+              '\tupdateContent(message: AssistantMessage, isStreaming = this.isStreaming): void {\n\t\tthis.lastMessage = message;\n\t\tthis.isStreaming = isStreaming;',
           )
           replace_once(
-              path,
-              "\t\tthis.outputPad = outputPad;\n\n\t\t// Container",
-              "\t\tthis.outputPad = outputPad;\n\t\tthis.markdownTransformers = markdownTransformers;\n\n\t\t// Container",
+              assistant,
+              '\t\t\t\t\tthis.markdownTheme,\n\t\t\t\t);',
+              '\t\t\t\t\tthis.markdownTheme,\n\t\t\t\t\tundefined,\n\t\t\t\t\t{ transform: createMarkdownTransform("assistant", this.isStreaming, this.markdownTransformers) },\n\t\t\t\t);',
           )
           replace_once(
-              path,
-              "\tupdateContent(message: AssistantMessage): void {\n\t\tthis.lastMessage = message;",
-              "\tupdateContent(message: AssistantMessage, isStreaming = this.isStreaming): void {\n\t\tthis.lastMessage = message;\n\t\tthis.isStreaming = isStreaming;",
-          )
-          replace_once(
-              path,
-              "\t\t\t\t\tthis.markdownTheme,\n\t\t\t\t);",
-              "\t\t\t\t\tthis.markdownTheme,\n\t\t\t\t\tundefined,\n\t\t\t\t\t{ transform: createMarkdownTransform(\"assistant\", this.isStreaming, this.markdownTransformers) },\n\t\t\t\t);",
-          )
-          replace_once(
-              path,
-              "\t\t\t\t\t\t\t\titalic: true,\n\t\t\t\t\t\t\t}),",
-              "\t\t\t\t\t\t\t\titalic: true,\n\t\t\t\t\t\t\t}, {\n\t\t\t\t\t\t\t\ttransform: createMarkdownTransform(\"assistant-thinking\", this.isStreaming, this.markdownTransformers),\n\t\t\t\t\t\t\t}),",
+              assistant,
+              '\t\t\t\t\t\t\tnew Markdown(thinkingBlocks.join("\\n\\n"), 0, 0, this.markdownTheme, {\n\t\t\t\t\t\t\t\tcolor: (text: string) => theme.fg("thinkingText", text),\n\t\t\t\t\t\t\t\titalic: true,\n\t\t\t\t\t\t\t}),',
+              '\t\t\t\t\t\t\tnew Markdown(\n\t\t\t\t\t\t\t\tthinkingBlocks.join("\\n\\n"),\n\t\t\t\t\t\t\t\t0,\n\t\t\t\t\t\t\t\t0,\n\t\t\t\t\t\t\t\tthis.markdownTheme,\n\t\t\t\t\t\t\t\t{\n\t\t\t\t\t\t\t\t\tcolor: (text: string) => theme.fg("thinkingText", text),\n\t\t\t\t\t\t\t\t\titalic: true,\n\t\t\t\t\t\t\t\t},\n\t\t\t\t\t\t\t\t{\n\t\t\t\t\t\t\t\t\ttransform: createMarkdownTransform(\n\t\t\t\t\t\t\t\t\t\t"assistant-thinking",\n\t\t\t\t\t\t\t\t\t\tthis.isStreaming,\n\t\t\t\t\t\t\t\t\t\tthis.markdownTransformers,\n\t\t\t\t\t\t\t\t\t),\n\t\t\t\t\t\t\t\t},\n\t\t\t\t\t\t\t),',
           )
 
-          # Preserve prompt-height background and marker while transforming display Markdown.
-          path = "packages/coding-agent/src/modes/interactive/components/user-message.ts"
+          user = "packages/coding-agent/src/modes/interactive/components/user-message.ts"
           replace_once(
-              path,
-              "import { Box, Container, Markdown, type MarkdownTheme } from \"@earendil-works/pi-tui\";\nimport { getMarkdownTheme, theme }",
-              "import { Box, Container, Markdown, type MarkdownTheme } from \"@earendil-works/pi-tui\";\nimport type { MarkdownTransformer } from \"../../../core/extensions/types.ts\";\nimport { getMarkdownTheme, theme }",
-          )
-          replace_once(
-              path,
-              "import { MessageMarkerComponent } from \"./message-marker.ts\";",
-              "import { createMarkdownTransform } from \"./markdown-transform.ts\";\nimport { MessageMarkerComponent } from \"./message-marker.ts\";",
+              user,
+              'import { Box, Container, Markdown, type MarkdownTheme } from "@earendil-works/pi-tui";\nimport { getMarkdownTheme, theme }',
+              'import { Box, Container, Markdown, type MarkdownTheme } from "@earendil-works/pi-tui";\nimport type { MarkdownTransformer } from "../../../core/extensions/types.ts";\nimport { getMarkdownTheme, theme }',
           )
           replace_once(
-              path,
-              "\tprivate outputPad: number;\n\n\tconstructor(text: string, markdownTheme: MarkdownTheme = getMarkdownTheme(), outputPad = 1) {",
-              "\tprivate outputPad: number;\n\tprivate markdownTransformers: readonly MarkdownTransformer[];\n\n\tconstructor(\n\t\ttext: string,\n\t\tmarkdownTheme: MarkdownTheme = getMarkdownTheme(),\n\t\toutputPad = 1,\n\t\tmarkdownTransformers: readonly MarkdownTransformer[] = [],\n\t) {",
+              user,
+              'import { MessageMarkerComponent } from "./message-marker.ts";',
+              'import { createMarkdownTransform } from "./markdown-transform.ts";\nimport { MessageMarkerComponent } from "./message-marker.ts";',
           )
           replace_once(
-              path,
-              "\t\tthis.outputPad = outputPad;\n\t\tthis.rebuild();",
-              "\t\tthis.outputPad = outputPad;\n\t\tthis.markdownTransformers = markdownTransformers;\n\t\tthis.rebuild();",
+              user,
+              '\tprivate outputPad: number;\n\n\tconstructor(text: string, markdownTheme: MarkdownTheme = getMarkdownTheme(), outputPad = 1) {',
+              '\tprivate outputPad: number;\n\tprivate markdownTransformers: readonly MarkdownTransformer[];\n\n\tconstructor(\n\t\ttext: string,\n\t\tmarkdownTheme: MarkdownTheme = getMarkdownTheme(),\n\t\toutputPad = 1,\n\t\tmarkdownTransformers: readonly MarkdownTransformer[] = [],\n\t) {',
           )
           replace_once(
-              path,
-              "\t\t\t{ preserveOrderedListMarkers: true, preserveBackslashEscapes: true },",
-              "\t\t\t{\n\t\t\t\tpreserveOrderedListMarkers: true,\n\t\t\t\tpreserveBackslashEscapes: true,\n\t\t\t\ttransform: createMarkdownTransform(\"user\", false, this.markdownTransformers),\n\t\t\t},",
+              user,
+              '\t\tthis.outputPad = outputPad;\n\t\tthis.rebuild();',
+              '\t\tthis.outputPad = outputPad;\n\t\tthis.markdownTransformers = markdownTransformers;\n\t\tthis.rebuild();',
           )
-
-          # Wire extension transformers through interactive mode and streaming lifecycle.
-          path = "packages/coding-agent/src/modes/interactive/interactive-mode.ts"
-          replace_once(path, "\tExtensionWidgetOptions,\n\tProjectTrustContext,", "\tExtensionWidgetOptions,\n\tMarkdownTransformer,\n\tProjectTrustContext,")
           replace_once(
-              path,
-              "\tprivate getToolDefinition(toolName: string) {\n\t\treturn this.session.getToolDefinition(toolName);\n\t}\n\n\t/**",
-              "\tprivate getToolDefinition(toolName: string) {\n\t\treturn this.session.getToolDefinition(toolName);\n\t}\n\n\tprivate getMarkdownTransformers(): MarkdownTransformer[] {\n\t\treturn this.session.extensionRunner.getMarkdownTransformers();\n\t}\n\n\t/**",
+              user,
+              '\t\t\t{ preserveOrderedListMarkers: true, preserveBackslashEscapes: true },',
+              '\t\t\t{\n\t\t\t\tpreserveOrderedListMarkers: true,\n\t\t\t\tpreserveBackslashEscapes: true,\n\t\t\t\ttransform: createMarkdownTransform("user", false, this.markdownTransformers),\n\t\t\t},',
           )
-          # Constructor call sites: add transformer argument after outputPad where the component shapes are unique.
-          text = Path(path).read_text()
-          assistant_needles = [
-              "\t\t\t\t\t\tthis.hiddenThinkingLabel,\n\t\t\t\t\t\tthis.outputPad,\n\t\t\t\t\t);",
-              "\t\t\t\t\tthis.hiddenThinkingLabel,\n\t\t\t\t\tthis.outputPad,\n\t\t\t\t);",
-          ]
-          for needle in assistant_needles:
-              if needle in text:
-                  text = text.replace(needle, needle.replace("\n\t\t\t\t\t);", "\n\t\t\t\t\t\tthis.getMarkdownTransformers(),\n\t\t\t\t\t);").replace("\n\t\t\t\t);", "\n\t\t\t\t\tthis.getMarkdownTransformers(),\n\t\t\t\t);"), 1)
-          # Explicit stable snippets for user components.
-          text = text.replace(
-              "\t\t\t\t\t\t\t\tskillBlock.userMessage,\n\t\t\t\t\t\t\t\tthis.getMarkdownThemeWithSettings(),\n\t\t\t\t\t\t\t\tthis.outputPad,\n\t\t\t\t\t\t\t);",
-              "\t\t\t\t\t\t\t\tskillBlock.userMessage,\n\t\t\t\t\t\t\t\tthis.getMarkdownThemeWithSettings(),\n\t\t\t\t\t\t\t\tthis.outputPad,\n\t\t\t\t\t\t\t\tthis.getMarkdownTransformers(),\n\t\t\t\t\t\t\t);",
-              1,
-          )
-          text = text.replace(
-              "\t\t\t\t\t\t\ttextContent,\n\t\t\t\t\t\t\tthis.getMarkdownThemeWithSettings(),\n\t\t\t\t\t\t\tthis.outputPad,\n\t\t\t\t\t\t);",
-              "\t\t\t\t\t\t\ttextContent,\n\t\t\t\t\t\t\tthis.getMarkdownThemeWithSettings(),\n\t\t\t\t\t\t\tthis.outputPad,\n\t\t\t\t\t\t\tthis.getMarkdownTransformers(),\n\t\t\t\t\t\t);",
-              1,
-          )
-          text = text.replace("this.streamingComponent.updateContent(this.streamingMessage);", "this.streamingComponent.updateContent(this.streamingMessage, true);", 2)
-          # The finalized message_end call must run non-streaming transforms.
-          marker = "this.streamingComponent.updateContent(this.streamingMessage, true);"
-          positions = [i for i in range(len(text)) if text.startswith(marker, i)]
-          if len(positions) >= 3:
-              i = positions[2]
-              text = text[:i] + "this.streamingComponent.updateContent(this.streamingMessage, false);" + text[i + len(marker):]
-          Path(path).write_text(text)
-
-          # Keep fork changelog and docs, adding the API in pi-claude terminology.
-          path = Path("packages/coding-agent/CHANGELOG.md")
-          text = path.read_text()
-          bullet = "- Added chainable `pi.registerMarkdownTransformer()` hooks for display-only transformation of user and assistant Markdown.\n"
-          if bullet not in text:
-              heading = "### Added\n\n"
-              if heading not in text:
-                  raise SystemExit("CHANGELOG Added heading missing")
-              text = text.replace(heading, heading + bullet, 1)
-              path.write_text(text)
-
-          path = Path("packages/coding-agent/docs/extensions.md")
-          text = path.read_text()
-          if "### pi.registerMarkdownTransformer(transformer)" not in text:
-              anchor = "### pi.registerEntryRenderer"
-              if anchor not in text:
-                  raise SystemExit("extensions docs anchor missing")
-              section = '''### pi.registerMarkdownTransformer(transformer)\n\nRegister a transformer for Markdown in normal user text, assistant text, and thinking blocks. Transformers run in extension load order, and each transformer receives the Markdown returned by the previous transformer. After the chain finishes, pi-claude renders the transformed content with its built-in renderer.\n\nThe transformer context includes `messageType` (`user`, `assistant`, or `assistant-thinking`), `isStreaming`, and the exact `availableWidth` in terminal columns. The hook is display-only: original messages remain unchanged in the session and model context. Transformers should be synchronous and inexpensive. If one throws, pi-claude preserves the Markdown produced so far and continues with the next transformer.\n\n```typescript\npi.registerMarkdownTransformer((markdown, { messageType, isStreaming, availableWidth }) => {\n  if (isStreaming || messageType === "assistant-thinking" || availableWidth < 40) return markdown;\n  return markdown.replaceAll("-->", "→");\n});\n```\n\n'''
-              text = text.replace(anchor, section + anchor, 1)
-              path.write_text(text)
           PY
 
-          # Resolve any index entries replaced above and reject unknown conflicts.
-          git add packages/coding-agent
           unresolved="$(git diff --name-only --diff-filter=U)"
           if [ -n "$unresolved" ]; then
             echo "Unresolved conflicts:"
@@ -234,48 +136,21 @@ jobs:
             exit 1
           fi
 
-          # Focused helper coverage independent of fork-specific visual snapshots.
-          cat > packages/coding-agent/test/markdown-transform.test.ts <<'TEST'
-          import { describe, expect, it } from "vitest";
-          import type { MarkdownTransformContext } from "../src/core/extensions/types.ts";
-          import { createMarkdownTransform } from "../src/modes/interactive/components/markdown-transform.ts";
-
-          describe("Markdown transformer chain", () => {
-            it("runs in order with width and streaming context", () => {
-              const seen: MarkdownTransformContext[] = [];
-              const transform = createMarkdownTransform("assistant", true, [
-                (markdown, context) => {
-                  seen.push(context);
-                  return `${markdown} one`;
-                },
-                (markdown) => `${markdown} two`,
-              ]);
-
-              expect(transform("start", 72)).toBe("start one two");
-              expect(seen).toEqual([{ messageType: "assistant", isStreaming: true, availableWidth: 72 }]);
-            });
-
-            it("keeps the current Markdown when a transformer throws", () => {
-              const transform = createMarkdownTransform("user", false, [
-                (markdown) => `${markdown} safe`,
-                () => {
-                  throw new Error("boom");
-                },
-                (markdown) => `${markdown} final`,
-              ]);
-
-              expect(transform("start", 40)).toBe("start safe final");
-            });
-          });
-          TEST
-
           rm -f .github/workflows/one-off-integrate-markdown-transformer.yml
           git add -A
 
+          sudo apt-get update
+          sudo apt-get install -y ripgrep fd-find
+          sudo ln -sf /usr/bin/fdfind /usr/local/bin/fd
           npm ci --ignore-scripts
           npm run build
           npm run check
-          npm test -- --runInBand || npm test
+          npx vitest run \
+            packages/coding-agent/test/assistant-message.test.ts \
+            packages/coding-agent/test/user-message.test.ts \
+            packages/coding-agent/test/extensions-runner.test.ts \
+            packages/coding-agent/test/extensions-discovery.test.ts \
+            packages/tui/test/markdown.test.ts
           npm run check:package-smoke
 
           git commit -m "feat(coding-agent): integrate Markdown transformer API"
