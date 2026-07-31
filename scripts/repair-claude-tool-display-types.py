@@ -32,7 +32,6 @@ write(grep_path, grep)
 
 
 # Force the persisted entry count into the public Ls result details contract.
-# The first migration can miss this field when upstream formatting differs.
 ls_path = "packages/coding-agent/src/core/tools/ls.ts"
 ls = read(ls_path)
 ls, ls_count = re.subn(
@@ -51,15 +50,61 @@ if ls_count != 1:
 write(ls_path, ls)
 
 
+# `erasableSyntaxOnly` rejects parameter properties. Keep ordinary fields and
+# constructors, and provide the Component.invalidate contract explicitly.
+index_path = "packages/coding-agent/src/core/tools/index.ts"
+index = read(index_path)
+old_index = '''class ClaudeBashCallComponent implements Component {
+\tconstructor(private readonly lines: string[]) {}
+'''
+new_index = '''class ClaudeBashCallComponent implements Component {
+\tprivate readonly lines: string[];
+
+\tconstructor(lines: string[]) {
+\t\tthis.lines = lines;
+\t}
+'''
+if index.count(old_index) != 1:
+    raise RuntimeError(f"expected one ClaudeBashCallComponent constructor, found {index.count(old_index)}")
+index = index.replace(old_index, new_index, 1)
+insert_before = '''\t}
+}
+
+function createBashDisplayToolDefinition'''
+invalidate_block = '''\t}
+
+\tinvalidate(): void {}
+}
+
+function createBashDisplayToolDefinition'''
+if index.count(insert_before) != 1:
+    raise RuntimeError(f"expected one Bash component class ending, found {index.count(insert_before)}")
+write(index_path, index.replace(insert_before, invalidate_block, 1))
+
+
+group_path = "packages/coding-agent/src/modes/interactive/components/tool-activity-group.ts"
+group = read(group_path)
+old_group = '''\tconstructor(private readonly requestRender: () => void) {}
+'''
+new_group = '''\tprivate readonly requestRender: () => void;
+
+\tconstructor(requestRender: () => void) {
+\t\tthis.requestRender = requestRender;
+\t}
+'''
+if group.count(old_group) != 1:
+    raise RuntimeError(f"expected one ToolActivityGroup constructor, found {group.count(old_group)}")
+write(group_path, group.replace(old_group, new_group, 1))
+
+
 # Agent tool results may contain SDK-only file blocks. The terminal renderer
-# supports text and images, so narrow at the UI boundary instead of casting the
-# broader result through the component's contract.
+# supports text and images, so narrow at the UI boundary.
 interactive_path = "packages/coding-agent/src/modes/interactive/interactive-mode.ts"
 interactive = read(interactive_path)
 old = '''\t\t\t\t\tcomponent.updateResult({ ...event.result, isError: event.isError });'''
 new = '''\t\t\t\t\tconst displayContent = event.result.content.filter(
 \t\t\t\t\t\t(
-\t\t\t\t\t\t\tcontent,
+\t\t\t\t\t\t\tcontent: (typeof event.result.content)[number],
 \t\t\t\t\t\t): content is Extract<(typeof event.result.content)[number], { type: "text" | "image" }> =>
 \t\t\t\t\t\t\tcontent.type === "text" || content.type === "image",
 \t\t\t\t\t);
