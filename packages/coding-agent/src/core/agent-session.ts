@@ -25,7 +25,7 @@ import type {
 	ShouldStopAfterTurnContext,
 	ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
-import { contentText, estimateContextTokens as estimateLlmContextTokens } from "@earendil-works/pi-ai";
+import { contentText } from "@earendil-works/pi-ai";
 import type {
 	AssistantMessage,
 	AuthResult,
@@ -48,6 +48,7 @@ import {
 } from "@earendil-works/pi-ai/compat";
 import { getThemeByName, theme } from "../modes/interactive/theme/theme.ts";
 import { stripFrontmatter } from "../utils/frontmatter.ts";
+import { estimateLlmContextTokens } from "../utils/llm-context-estimate.ts";
 import { resolvePath } from "../utils/paths.ts";
 import { sleep } from "../utils/sleep.ts";
 import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth-guidance.ts";
