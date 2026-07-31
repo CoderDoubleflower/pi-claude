@@ -32,4 +32,36 @@ describe("UserMessageComponent", () => {
 		expect(lines.at(-1)?.startsWith(OSC133_ZONE_END + OSC133_ZONE_FINAL)).toBe(true);
 		expect(stripAnsi(lines.at(-1) ?? "").trim()).not.toBe("");
 	});
+
+	test("chains Markdown transformers with user message context", () => {
+		initTheme("dark");
+		const calls: string[] = [];
+		const component = new UserMessageComponent("The input is $x^2$.", undefined, 1, [
+			(markdown, context) => {
+				calls.push("formula");
+				expect(context).toEqual({ messageType: "user", isStreaming: false, availableWidth: 77 });
+				return markdown.replace("$x^2$", "x²");
+			},
+			(markdown) => {
+				calls.push("suffix");
+				return `${markdown} Done.`;
+			},
+		]);
+
+		expect(stripAnsi(component.render(80).join("\n"))).toContain("The input is x². Done.");
+		expect(calls).toEqual(["formula", "suffix"]);
+	});
+
+	test("reapplies Markdown transformers when invalidated", () => {
+		initTheme("dark");
+		let suffix = "before";
+		const component = new UserMessageComponent("Message", undefined, 1, [(markdown) => `${markdown} ${suffix}`]);
+
+		expect(stripAnsi(component.render(80).join("\n"))).toContain("Message before");
+
+		suffix = "after";
+		component.invalidate();
+
+		expect(stripAnsi(component.render(80).join("\n"))).toContain("Message after");
+	});
 });

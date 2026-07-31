@@ -1,6 +1,8 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { type Component, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@earendil-works/pi-tui";
+import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
 import { getMarkdownTheme, theme } from "../theme/theme.ts";
+import { createMarkdownTransform } from "./markdown-transform.ts";
 import { MessageMarkerComponent } from "./message-marker.ts";
 
 const OSC133_ZONE_START = "\x1b]133;A\x07";
@@ -39,7 +41,9 @@ export class AssistantMessageComponent extends Container {
 	private markdownTheme: MarkdownTheme;
 	private hiddenThinkingLabel: string;
 	private outputPad: number;
+	private markdownTransformers: readonly MarkdownTransformer[];
 	private lastMessage?: AssistantMessage;
+	private isStreaming = false;
 	private hasToolCalls = false;
 
 	constructor(
@@ -48,6 +52,7 @@ export class AssistantMessageComponent extends Container {
 		markdownTheme: MarkdownTheme = getMarkdownTheme(),
 		hiddenThinkingLabel = "Thinking...",
 		outputPad = 1,
+		markdownTransformers: readonly MarkdownTransformer[] = [],
 	) {
 		super();
 
@@ -55,6 +60,7 @@ export class AssistantMessageComponent extends Container {
 		this.markdownTheme = markdownTheme;
 		this.hiddenThinkingLabel = hiddenThinkingLabel;
 		this.outputPad = outputPad;
+		this.markdownTransformers = markdownTransformers;
 
 		// Container for text/thinking content
 		this.contentContainer = new Container();
@@ -104,8 +110,9 @@ export class AssistantMessageComponent extends Container {
 		return lines;
 	}
 
-	updateContent(message: AssistantMessage): void {
+	updateContent(message: AssistantMessage, isStreaming = this.isStreaming): void {
 		this.lastMessage = message;
+		this.isStreaming = isStreaming;
 
 		// Clear content container
 		this.contentContainer.clear();
@@ -131,6 +138,8 @@ export class AssistantMessageComponent extends Container {
 					hasResponseMarker ? this.outputPad : 0,
 					0,
 					this.markdownTheme,
+					undefined,
+					{ transform: createMarkdownTransform("assistant", this.isStreaming, this.markdownTransformers) },
 				);
 				this.contentContainer.addChild(
 					hasResponseMarker ? markdown : new AssistantResponseComponent(markdown, this.outputPad),
@@ -174,10 +183,23 @@ export class AssistantMessageComponent extends Container {
 					// Render each run of thinking blocks as one Markdown section.
 					this.contentContainer.addChild(
 						new MessageMarkerComponent(
-							new Markdown(thinkingBlocks.join("\n\n"), 0, 0, this.markdownTheme, {
-								color: (text: string) => theme.fg("thinkingText", text),
-								italic: true,
-							}),
+							new Markdown(
+								thinkingBlocks.join("\n\n"),
+								0,
+								0,
+								this.markdownTheme,
+								{
+									color: (text: string) => theme.fg("thinkingText", text),
+									italic: true,
+								},
+								{
+									transform: createMarkdownTransform(
+										"assistant-thinking",
+										this.isStreaming,
+										this.markdownTransformers,
+									),
+								},
+							),
 							thinkingMarker,
 							this.outputPad,
 						),
