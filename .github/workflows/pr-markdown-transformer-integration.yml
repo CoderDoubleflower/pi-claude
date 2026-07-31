@@ -2,7 +2,7 @@ name: Complete Markdown transformer integration
 
 on:
   pull_request_target:
-    types: [edited]
+    types: [edited, reopened]
 
 permissions:
   contents: write
