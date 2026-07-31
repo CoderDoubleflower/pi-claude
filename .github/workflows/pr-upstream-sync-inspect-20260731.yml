@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 jobs:
   inspect:
@@ -17,8 +18,11 @@ jobs:
           ref: main
           fetch-depth: 0
 
-      - name: Inspect three-way merge
+      - name: Inspect and report three-way merge
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -27,27 +31,42 @@ jobs:
           git fetch upstream main
 
           set +e
-          git merge --no-commit --no-ff upstream/main
+          git merge --no-commit --no-ff upstream/main >/tmp/upstream-merge.log 2>&1
           merge_status=$?
           set -e
 
-          echo "MERGE_STATUS=${merge_status}"
-          echo "UPSTREAM_HEAD=$(git rev-parse upstream/main)"
-          echo "BASE_HEAD=$(git rev-parse HEAD)"
-          echo "CONFLICT_FILES_BEGIN"
-          git diff --name-only --diff-filter=U || true
-          echo "CONFLICT_FILES_END"
-          echo "MERGED_STATUS_BEGIN"
-          git status --short
-          echo "MERGED_STATUS_END"
+          upstream_head="$(git rev-parse upstream/main)"
+          base_head="$(git rev-parse HEAD)"
+          conflicts="$(git diff --name-only --diff-filter=U || true)"
 
-          if [ "${merge_status}" -ne 0 ]; then
-            echo "CONFLICT_DETAILS_BEGIN"
-            for file in $(git diff --name-only --diff-filter=U); do
-              echo "===== ${file} ====="
-              git checkout --conflict=merge -- "$file" || true
-              grep -n -B 8 -A 20 -E '^(<<<<<<<|=======|>>>>>>>)' "$file" || true
-            done
-            echo "CONFLICT_DETAILS_END"
-            exit 1
+          {
+            echo '<!-- upstream-sync-inspection-20260731 -->'
+            echo '## Upstream merge inspection'
+            echo
+            echo "- Base: \`${base_head}\`"
+            echo "- Upstream: \`${upstream_head}\`"
+            echo "- Merge status: \`${merge_status}\`"
+            echo
+            if [ -n "${conflicts}" ]; then
+              echo '### Conflict files'
+              echo '```text'
+              printf '%s\n' "${conflicts}"
+              echo '```'
+            else
+              echo 'No textual merge conflicts detected.'
+            fi
+            echo
+            echo '<details><summary>git merge output</summary>'
+            echo
+            echo '```text'
+            cat /tmp/upstream-merge.log
+            echo '```'
+            echo '</details>'
+          } >/tmp/upstream-report.md
+
+          existing_id="$(gh api "repos/${GITHUB_REPOSITORY}/issues/${PR_NUMBER}/comments" --paginate --jq '.[] | select(.body | contains("upstream-sync-inspection-20260731")) | .id' | head -n1)"
+          if [ -n "${existing_id}" ]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/issues/comments/${existing_id}" -F body=@/tmp/upstream-report.md
+          else
+            gh pr comment "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --body-file /tmp/upstream-report.md
           fi
