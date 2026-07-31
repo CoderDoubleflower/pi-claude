@@ -1,0 +1,434 @@
+name: Apply Claude compaction UI fix
+
+on:
+  push:
+    branches:
+      - fix/claude-compaction-ui
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Apply source changes
+        shell: bash
+        run: |
+          cat > /tmp/apply_compaction_fix.py <<'PY'
+          from pathlib import Path
+          import re
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f"expected one match in {path}, found {count}")
+              file.write_text(text.replace(old, new, 1))
+
+          status_path = Path("packages/coding-agent/src/modes/interactive/components/status-indicator.ts")
+          status = status_path.read_text()
+          old_status = '''export class CompactionStatusIndicator extends StatusIndicator {
+          \tconstructor(ui: TUI, reason: CompactionStatusReason) {
+          \t\tconst cancelHint = `(${keyText("app.interrupt")} to cancel)`;
+          \t\tconst label =
+          \t\t\treason === "manual"
+          \t\t\t\t? `Compacting context... ${cancelHint}`
+          \t\t\t\t: `${reason === "overflow" ? "Context overflow detected, " : ""}Auto-compacting... ${cancelHint}`;
+          \t\tsuper(
+          \t\t\t"compaction",
+          \t\t\tui,
+          \t\t\t(spinner) => theme.fg("accent", spinner),
+          \t\t\t(text) => theme.fg("muted", text),
+          \t\t\tlabel,
+          \t\t);
+          \t}
+          }
+          '''
+          new_status = '''export class CompactionStatusIndicator extends StatusIndicator {
+          \tconstructor(ui: TUI, _reason: CompactionStatusReason) {
+          \t\tsuper(
+          \t\t\t"compaction",
+          \t\t\tui,
+          \t\t\tcolorClaudeWorkingText,
+          \t\t\tcolorClaudeWorkingText,
+          \t\t\t"Compacting conversation…",
+          \t\t\tCLAUDE_WORKING_INDICATOR,
+          \t\t);
+          \t}
+          }
+          '''
+          if status.count(old_status) != 1:
+              raise RuntimeError("CompactionStatusIndicator source did not match")
+          status_path.write_text(status.replace(old_status, new_status, 1))
+
+          Path("packages/coding-agent/src/modes/interactive/components/compaction-summary-message.ts").write_text('''import { type Component, type MarkdownTheme, Text, visibleWidth } from "@earendil-works/pi-tui";
+          import type { CompactionSummaryMessage } from "../../../core/messages.ts";
+          import { theme } from "../theme/theme.ts";
+          import { keyText } from "./keybinding-hints.ts";
+          import { MessageMarkerComponent } from "./message-marker.ts";
+
+          const COMPACT_SUMMARY_MARKER = "●";
+          const MESSAGE_RESPONSE_PREFIX = "  ⎿  ";
+
+          /** Render Claude Code's compact-summary transcript row. */
+          export class CompactionSummaryMessageComponent implements Component {
+          \tprivate expanded = false;
+          \tprivate readonly message: CompactionSummaryMessage;
+
+          \tconstructor(message: CompactionSummaryMessage, _markdownTheme?: MarkdownTheme) {
+          \t\tthis.message = message;
+          \t}
+
+          \tsetExpanded(expanded: boolean): void {
+          \t\tthis.expanded = expanded;
+          \t}
+
+          \trender(width: number): string[] {
+          \t\tconst hint = this.expanded
+          \t\t\t? ""
+          \t\t\t: theme.fg("dim", ` (${keyText("app.tools.expand")} to expand)`);
+          \t\tconst heading = new MessageMarkerComponent(
+          \t\t\tnew Text(theme.bold(theme.fg("text", "Compact summary")) + hint, 0, 0),
+          \t\t\ttheme.fg("text", COMPACT_SUMMARY_MARKER),
+          \t\t);
+          \t\tconst lines = ["", ...heading.render(width)];
+          \t\tif (!this.expanded) return lines;
+
+          \t\tconst prefix = theme.fg("dim", MESSAGE_RESPONSE_PREFIX);
+          \t\tconst prefixWidth = visibleWidth(prefix);
+          \t\tconst continuationPrefix = " ".repeat(prefixWidth);
+          \t\tconst body = new Text(this.message.summary, 0, 0).render(Math.max(1, width - prefixWidth));
+          \t\tlines.push(...body.map((line, index) => `${index === 0 ? prefix : continuationPrefix}${line}`));
+          \t\treturn lines;
+          \t}
+
+          \tinvalidate(): void {}
+          }
+          ''')
+
+          interactive_path = Path("packages/coding-agent/src/modes/interactive/interactive-mode.ts")
+          interactive = interactive_path.read_text()
+          interactive = interactive.replace(
+              'import { createCompactionSummaryMessage } from "../../core/messages.ts";\n',
+              '',
+              1,
+          )
+          interactive = interactive.replace(
+              '\tprivate agentStartedAt: number | undefined = undefined;\n',
+              '\tprivate agentStartedAt: number | undefined = undefined;\n\tprivate lastAgentEndAssistantMessage: AssistantMessage | undefined = undefined;\n',
+              1,
+          )
+          interactive = interactive.replace(
+              '\t\t\tcase "agent_start":\n\t\t\t\tthis.agentStartedAt ??= Date.now();\n',
+              '\t\t\tcase "agent_start":\n\t\t\t\tif (this.agentStartedAt === undefined) {\n\t\t\t\t\tthis.lastAgentEndAssistantMessage = undefined;\n\t\t\t\t}\n\t\t\t\tthis.agentStartedAt ??= Date.now();\n',
+              1,
+          )
+
+          lifecycle_pattern = re.compile(
+              r'\t\t\tcase "agent_end": \{.*?\n\t\t\tcase "compaction_start": \{',
+              re.S,
+          )
+          lifecycle_replacement = '''\t\t\tcase "agent_end": {
+          \t\t\t\tif (this.streamingComponent) {
+          \t\t\t\t\tthis.chatContainer.removeChild(this.streamingComponent);
+          \t\t\t\t\tthis.streamingComponent = undefined;
+          \t\t\t\t\tthis.streamingMessage = undefined;
+          \t\t\t\t}
+          \t\t\t\tthis.pendingTools.clear();
+          \t\t\t\tif (typeof this.resetToolActivityState === "function") this.resetToolActivityState();
+
+          \t\t\t\tfor (let index = event.messages.length - 1; index >= 0; index--) {
+          \t\t\t\t\tconst message = event.messages[index];
+          \t\t\t\t\tif (message?.role === "assistant") {
+          \t\t\t\t\t\tthis.lastAgentEndAssistantMessage = message;
+          \t\t\t\t\t\tbreak;
+          \t\t\t\t\t}
+          \t\t\t\t}
+
+          \t\t\t\tthis.ui.requestRender();
+          \t\t\t\tbreak;
+          \t\t\t}
+
+          \t\t\tcase "agent_settled": {
+          \t\t\t\tif (this.settingsManager.getShowTerminalProgress()) {
+          \t\t\t\t\tthis.ui.terminal.setProgress(false);
+          \t\t\t\t}
+          \t\t\t\tconst agentDurationMs =
+          \t\t\t\t\tthis.agentStartedAt === undefined ? undefined : Math.max(0, Date.now() - this.agentStartedAt);
+          \t\t\t\tthis.agentStartedAt = undefined;
+          \t\t\t\tthis.clearStatusIndicator();
+
+          \t\t\t\tconst wasAborted = this.lastAgentEndAssistantMessage?.stopReason === "aborted";
+          \t\t\t\tthis.lastAgentEndAssistantMessage = undefined;
+          \t\t\t\tif (
+          \t\t\t\t\tagentDurationMs !== undefined &&
+          \t\t\t\t\tshouldShowClaudeTurnDuration({
+          \t\t\t\t\t\tdurationMs: agentDurationMs,
+          \t\t\t\t\t\taborted: wasAborted,
+          \t\t\t\t\t\twillRetry: false,
+          \t\t\t\t\t})
+          \t\t\t\t) {
+          \t\t\t\t\tconst entryId = this.sessionManager.appendCustomEntry(CLAUDE_TURN_DURATION_ENTRY_TYPE, {
+          \t\t\t\t\t\tdurationMs: agentDurationMs,
+          \t\t\t\t\t});
+          \t\t\t\t\tconst entry = this.sessionManager.getEntry(entryId);
+          \t\t\t\t\tif (entry?.type === "custom") {
+          \t\t\t\t\t\tthis.addCustomEntryToChat(entry);
+          \t\t\t\t\t}
+          \t\t\t\t}
+
+          \t\t\t\tthis.ui.requestRender();
+          \t\t\t\tawait this.checkShutdownRequested();
+          \t\t\t\tbreak;
+          \t\t\t}
+
+          \t\t\tcase "compaction_start": {'''
+          interactive, count = lifecycle_pattern.subn(lifecycle_replacement, interactive, count=1)
+          if count != 1:
+              raise RuntimeError(f"agent lifecycle replacement count was {count}")
+
+          compaction_pattern = re.compile(
+              r'\t\t\tcase "compaction_end": \{.*?\n\t\t\tcase "auto_retry_start": \{',
+              re.S,
+          )
+          compaction_replacement = '''\t\t\tcase "compaction_end": {
+          \t\t\t\tif (this.settingsManager.getShowTerminalProgress() && !this.session.isStreaming) {
+          \t\t\t\t\tthis.ui.terminal.setProgress(false);
+          \t\t\t\t}
+          \t\t\t\tif (this.autoCompactionEscapeHandler) {
+          \t\t\t\t\tthis.defaultEditor.onEscape = this.autoCompactionEscapeHandler;
+          \t\t\t\t\tthis.autoCompactionEscapeHandler = undefined;
+          \t\t\t\t}
+          \t\t\t\tthis.clearStatusIndicator("compaction");
+          \t\t\t\tif (event.aborted) {
+          \t\t\t\t\tif (event.reason === "manual") {
+          \t\t\t\t\t\tthis.showError("Compaction cancelled");
+          \t\t\t\t\t} else {
+          \t\t\t\t\t\tthis.showStatus("Auto-compaction cancelled");
+          \t\t\t\t\t}
+          \t\t\t\t} else if (event.result) {
+          \t\t\t\t\tthis.chatContainer.clear();
+          \t\t\t\t\tthis.rebuildChatFromMessages();
+          \t\t\t\t\tthis.footer.invalidate();
+          \t\t\t\t} else if (event.errorMessage) {
+          \t\t\t\t\tif (event.reason === "manual") {
+          \t\t\t\t\t\tthis.showError(event.errorMessage);
+          \t\t\t\t\t} else {
+          \t\t\t\t\t\tthis.chatContainer.addChild(new Spacer(1));
+          \t\t\t\t\t\tthis.chatContainer.addChild(new Text(theme.fg("error", event.errorMessage), 1, 0));
+          \t\t\t\t\t}
+          \t\t\t\t}
+          \t\t\t\tif (event.willContinue && this.workingVisible) {
+          \t\t\t\t\tthis.showStatusIndicator(
+          \t\t\t\t\t\tnew WorkingStatusIndicator(
+          \t\t\t\t\t\t\tthis.ui,
+          \t\t\t\t\t\t\tthis.workingMessage ?? this.defaultWorkingMessage,
+          \t\t\t\t\t\t\tthis.workingIndicatorOptions,
+          \t\t\t\t\t\t),
+          \t\t\t\t\t);
+          \t\t\t\t}
+          \t\t\t\tvoid this.flushCompactionQueue({ willRetry: event.willRetry });
+          \t\t\t\tthis.ui.requestRender();
+          \t\t\t\tbreak;
+          \t\t\t}
+
+          \t\t\tcase "auto_retry_start": {'''
+          interactive, count = compaction_pattern.subn(compaction_replacement, interactive, count=1)
+          if count != 1:
+              raise RuntimeError(f"compaction UI replacement count was {count}")
+          interactive_path.write_text(interactive)
+
+          agent_path = Path("packages/coding-agent/src/core/agent-session.ts")
+          agent = agent_path.read_text()
+          replace_event_old = '''\t| {
+          \t\ttype: "compaction_end";
+          \t\treason: "manual" | "threshold" | "overflow";
+          \t\tresult: CompactionResult | undefined;
+          \t\taborted: boolean;
+          \t\twillRetry: boolean;
+          \t\terrorMessage?: string;
+          \t  }
+          '''
+          replace_event_new = '''\t| {
+          \t\ttype: "compaction_end";
+          \t\treason: "manual" | "threshold" | "overflow";
+          \t\tresult: CompactionResult | undefined;
+          \t\taborted: boolean;
+          \t\twillRetry: boolean;
+          \t\twillContinue?: boolean;
+          \t\terrorMessage?: string;
+          \t  }
+          '''
+          if agent.count(replace_event_old) != 1:
+              raise RuntimeError("compaction event type did not match")
+          agent = agent.replace(replace_event_old, replace_event_new, 1)
+
+          continuation_pattern = re.compile(
+              r'\t\t\tconst retainedContextTooLarge =.*?\n\t\t\treturn this\.agent\.hasQueuedMessages\(\);',
+              re.S,
+          )
+          continuation_replacement = '''\t\t\tconst retainedContextTooLarge =
+          \t\t\t\tcontinueAfterCompaction &&
+          \t\t\t\tshouldCompact(estimatedLlmContextTokensAfter, this.model?.contextWindow ?? 0, settings);
+          \t\t\tconst hasQueuedContinuation = this.agent.hasQueuedMessages();
+          \t\t\tconst willContinue =
+          \t\t\t\t!retainedContextTooLarge && (willRetry || continueAfterCompaction || hasQueuedContinuation);
+          \t\t\tthis._emit({
+          \t\t\t\ttype: "compaction_end",
+          \t\t\t\treason,
+          \t\t\t\tresult,
+          \t\t\t\taborted: false,
+          \t\t\t\twillRetry,
+          \t\t\t\twillContinue,
+          \t\t\t\t...(retainedContextTooLarge
+          \t\t\t\t\t? {
+          \t\t\t\t\t\terrorMessage:
+          \t\t\t\t\t\t\t"Auto-compaction retained context above threshold; stopping before next provider request.",
+          \t\t\t\t\t}
+          \t\t\t\t\t: {}),
+          \t\t\t});
+
+          \t\t\tif (retainedContextTooLarge) return false;
+          \t\t\tif (willRetry) {
+          \t\t\t\tconst messages = this.agent.state.messages;
+          \t\t\t\tconst lastMsg = messages[messages.length - 1];
+          \t\t\t\tif (lastMsg?.role === "assistant" && (lastMsg as AssistantMessage).stopReason === "error") {
+          \t\t\t\t\tthis.agent.state.messages = messages.slice(0, -1);
+          \t\t\t\t}
+          \t\t\t}
+          \t\t\treturn willContinue;'''
+          agent, count = continuation_pattern.subn(continuation_replacement, agent, count=1)
+          if count != 1:
+              raise RuntimeError(f"continuation replacement count was {count}")
+
+          context_pattern = re.compile(
+              r'\t\t\tif \(!hasPostCompactionUsage\) \{\n\t\t\t\treturn \{ tokens: null, contextWindow, percent: null \};\n\t\t\t\}\n\t\t\}\n\n\t\tconst estimate = estimateContextTokens\(this\.messages\);\n\t\tconst percent = \(estimate\.tokens / contextWindow\) \* 100;',
+          )
+          context_replacement = '''\t\t\tif (!hasPostCompactionUsage) {
+          \t\t\t\tconst estimatedTokens = estimateLlmContextTokens({
+          \t\t\t\t\tsystemPrompt: this.agent.state.systemPrompt,
+          \t\t\t\t\tmessages: convertToLlm(this.messages),
+          \t\t\t\t\ttools: this.agent.state.tools,
+          \t\t\t\t}).tokens;
+          \t\t\t\treturn {
+          \t\t\t\t\ttokens: estimatedTokens,
+          \t\t\t\t\tcontextWindow,
+          \t\t\t\t\tpercent: Math.min(100, (estimatedTokens / contextWindow) * 100),
+          \t\t\t\t};
+          \t\t\t}
+          \t\t}
+
+          \t\tconst estimate = estimateContextTokens(this.messages);
+          \t\tconst percent = Math.min(100, (estimate.tokens / contextWindow) * 100);'''
+          agent, count = context_pattern.subn(context_replacement, agent, count=1)
+          if count != 1:
+              raise RuntimeError(f"context usage replacement count was {count}")
+          agent_path.write_text(agent)
+
+          test_path = Path("packages/coding-agent/test/claude-status.test.ts")
+          tests = test_path.read_text()
+          tests = tests.replace(
+              'import type { TUI } from "@earendil-works/pi-tui";\n',
+              'import type { AssistantMessage } from "@earendil-works/pi-ai/compat";\nimport type { TUI } from "@earendil-works/pi-tui";\n',
+              1,
+          )
+          tests = tests.replace(
+              'import type { CustomEntry } from "../src/core/session-manager.ts";\n',
+              'import type { AgentSessionEvent } from "../src/core/agent-session.ts";\nimport { createCompactionSummaryMessage } from "../src/core/messages.ts";\nimport type { CustomEntry } from "../src/core/session-manager.ts";\n',
+              1,
+          )
+          tests = tests.replace(
+              'import { WorkingStatusIndicator } from "../src/modes/interactive/components/status-indicator.ts";\n',
+              'import { CompactionSummaryMessageComponent } from "../src/modes/interactive/components/compaction-summary-message.ts";\nimport {\n\tCompactionStatusIndicator,\n\tWorkingStatusIndicator,\n} from "../src/modes/interactive/components/status-indicator.ts";\n',
+              1,
+          )
+          test_insert = '''
+          \ttest("matches Claude Code's active compaction spinner", () => {
+          \t\tinitTheme("dark");
+          \t\tconst indicator = new CompactionStatusIndicator(createTui(), "threshold");
+          \t\tconst line = indicator
+          \t\t\t.render(60)
+          \t\t\t.map(stripAnsi)
+          \t\t\t.find((entry) => entry.trim().length > 0);
+          \t\tindicator.dispose();
+
+          \t\texpect(indicator.kind).toBe("compaction");
+          \t\texpect(line?.endsWith("Compacting conversation…")).toBe(true);
+          \t\texpect(line?.startsWith(" ")).toBe(false);
+          \t});
+
+          \ttest("matches Claude Code's compact summary transcript row", () => {
+          \t\tinitTheme("dark");
+          \t\tconst message = createCompactionSummaryMessage("Retained summary", 120_000, new Date(0).toISOString());
+          \t\tconst component = new CompactionSummaryMessageComponent(message);
+          \t\tconst collapsed = component.render(80).map(stripAnsi);
+
+          \t\texpect(collapsed[0]).toBe("");
+          \t\texpect(collapsed[1]?.startsWith("● Compact summary (")).toBe(true);
+          \t\texpect(collapsed[1]?.endsWith(" to expand)")).toBe(true);
+          \t\texpect(collapsed.join(" ")).not.toContain("[compaction]");
+          \t\texpect(collapsed.join(" ")).not.toContain("120,000");
+
+          \t\tcomponent.setExpanded(true);
+          \t\tconst expanded = component.render(80).map(stripAnsi);
+          \t\texpect(expanded[1]).toBe("● Compact summary");
+          \t\texpect(expanded[2]).toBe("  ⎿  Retained summary");
+          \t});
+          '''
+          boundary = '\t});\n});\n\ndescribe("Interactive editor border color"'
+          if tests.count(boundary) != 1:
+              raise RuntimeError("status test insertion boundary did not match")
+          tests = tests.replace(
+              boundary,
+              '\t});\n' + test_insert + '});\n\ndescribe("Interactive task lifecycle", () => {\n\ttest("finalizes duration and terminal progress only when the outer task settles", async () => {\n\t\tvi.spyOn(Date, "now").mockReturnValue(40_001);\n\t\tconst progress: boolean[] = [];\n\t\tconst clearedKinds: Array<string | undefined> = [];\n\t\tconst renderedEntries: CustomEntry[] = [];\n\t\tconst persistedEntry: CustomEntry = {\n\t\t\ttype: "custom",\n\t\t\tcustomType: CLAUDE_TURN_DURATION_ENTRY_TYPE,\n\t\t\tdata: { durationMs: 40_001 },\n\t\t\tid: "duration",\n\t\t\tparentId: null,\n\t\t\ttimestamp: new Date(0).toISOString(),\n\t\t};\n\t\tconst assistantMessage = {\n\t\t\trole: "assistant",\n\t\t\tcontent: [],\n\t\t\tapi: "anthropic-messages",\n\t\t\tprovider: "anthropic",\n\t\t\tmodel: "claude",\n\t\t\tusage: {\n\t\t\t\tinput: 1,\n\t\t\t\toutput: 1,\n\t\t\t\tcacheRead: 0,\n\t\t\t\tcacheWrite: 0,\n\t\t\t\ttotalTokens: 2,\n\t\t\t\tcost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },\n\t\t\t},\n\t\t\tstopReason: "stop",\n\t\t\ttimestamp: 1,\n\t\t} as unknown as AssistantMessage;\n\n\t\ttype LifecycleHost = {\n\t\t\tisInitialized: boolean;\n\t\t\tfooter: { invalidate(): void };\n\t\t\tsettingsManager: { getShowTerminalProgress(): boolean };\n\t\t\tui: { terminal: { setProgress(active: boolean): void }; requestRender(): void };\n\t\t\tagentStartedAt: number | undefined;\n\t\t\tlastAgentEndAssistantMessage: AssistantMessage | undefined;\n\t\t\tstreamingComponent: undefined;\n\t\t\tstreamingMessage: undefined;\n\t\t\tpendingTools: Map<string, never>;\n\t\t\tresetToolActivityState(): void;\n\t\t\tclearStatusIndicator(kind?: string): void;\n\t\t\tsessionManager: {\n\t\t\t\tappendCustomEntry(customType: string, data: unknown): string;\n\t\t\t\tgetEntry(id: string): CustomEntry | undefined;\n\t\t\t};\n\t\t\taddCustomEntryToChat(entry: CustomEntry): void;\n\t\t\tcheckShutdownRequested(): Promise<void>;\n\t\t};\n\n\t\tconst host: LifecycleHost = {\n\t\t\tisInitialized: true,\n\t\t\tfooter: { invalidate() {} },\n\t\t\tsettingsManager: { getShowTerminalProgress: () => true },\n\t\t\tui: {\n\t\t\t\tterminal: { setProgress: (active) => progress.push(active) },\n\t\t\t\trequestRender() {},\n\t\t\t},\n\t\t\tagentStartedAt: 0,\n\t\t\tlastAgentEndAssistantMessage: undefined,\n\t\t\tstreamingComponent: undefined,\n\t\t\tstreamingMessage: undefined,\n\t\t\tpendingTools: new Map(),\n\t\t\tresetToolActivityState() {},\n\t\t\tclearStatusIndicator: (kind) => clearedKinds.push(kind),\n\t\t\tsessionManager: {\n\t\t\t\tappendCustomEntry: () => "duration",\n\t\t\t\tgetEntry: () => persistedEntry,\n\t\t\t},\n\t\t\taddCustomEntryToChat: (entry) => renderedEntries.push(entry),\n\t\t\tasync checkShutdownRequested() {},\n\t\t};\n\t\tconst handleEvent = (\n\t\t\tInteractiveMode.prototype as unknown as {\n\t\t\t\thandleEvent(this: LifecycleHost, event: AgentSessionEvent): Promise<void>;\n\t\t\t}\n\t\t).handleEvent;\n\n\t\tawait handleEvent.call(host, { type: "agent_end", messages: [assistantMessage], willRetry: false });\n\t\texpect(progress).toEqual([]);\n\t\texpect(clearedKinds).toEqual([]);\n\t\texpect(host.agentStartedAt).toBe(0);\n\t\texpect(host.lastAgentEndAssistantMessage).toBe(assistantMessage);\n\n\t\tawait handleEvent.call(host, { type: "agent_settled" });\n\t\texpect(progress).toEqual([false]);\n\t\texpect(clearedKinds).toEqual([undefined]);\n\t\texpect(host.agentStartedAt).toBeUndefined();\n\t\texpect(host.lastAgentEndAssistantMessage).toBeUndefined();\n\t\texpect(renderedEntries).toEqual([persistedEntry]);\n\t});\n});\n\ndescribe("Interactive editor border color"',
+              1,
+          )
+          test_path.write_text(tests)
+
+          changelog = Path("packages/coding-agent/CHANGELOG.md")
+          changelog_text = changelog.read_text()
+          marker = "### Fixed\n\n"
+          entry = "- Fixed mid-task compaction to remain visibly active, use Claude Code's compaction spinner and compact-summary transcript row, finalize task duration only after all continuations settle, and keep context usage finite after compaction.\n"
+          if changelog_text.count(marker) < 1:
+              raise RuntimeError("changelog Fixed section not found")
+          changelog.write_text(changelog_text.replace(marker, marker + entry, 1))
+          PY
+          python /tmp/apply_compaction_fix.py
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Validate
+        run: |
+          npm run check
+          cd packages/coding-agent
+          node ../../node_modules/vitest/dist/cli.js --run test/claude-status.test.ts
+
+      - name: Commit changes
+        shell: bash
+        run: |
+          rm .github/workflows/apply-claude-compaction-ui-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            .github/workflows/apply-claude-compaction-ui-fix.yml \
+            packages/coding-agent/CHANGELOG.md \
+            packages/coding-agent/src/core/agent-session.ts \
+            packages/coding-agent/src/modes/interactive/components/compaction-summary-message.ts \
+            packages/coding-agent/src/modes/interactive/components/status-indicator.ts \
+            packages/coding-agent/src/modes/interactive/interactive-mode.ts \
+            packages/coding-agent/test/claude-status.test.ts
+          git commit -m "fix(coding-agent): match Claude Code compaction UI"
+          git push origin HEAD:fix/claude-compaction-ui
