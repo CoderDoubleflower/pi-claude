@@ -11,13 +11,13 @@ export function buildEnterPlanModeDescription(): string {
 }
 
 export function buildExitPlanModeDescription(): string {
-	return `Use only while plan mode is active, after the implementation plan has been written to the provided plan file. This tool presents that file for user approval. Do not ask for plan approval in normal text or with ${ASK_USER_QUESTION_TOOL_NAME}.`;
+	return `Use only while plan mode is active, after the implementation plan has been written to the provided plan file. If the normal edit/write tools are unavailable, provide the complete Markdown plan in this tool's plan argument; it will be saved only to the current plan file. This tool presents that file for user approval. Do not ask for plan approval in normal text or with ${ASK_USER_QUESTION_TOOL_NAME}.`;
 }
 
 function planFileSection(planPath: string, planExists: boolean): string {
 	return planExists
-		? `A plan already exists at ${planPath}. Read it first and update it incrementally.`
-		: `Write the final plan to ${planPath}. This is the only file you may create or modify.`;
+		? `A plan already exists at ${planPath}. Read it first and update it incrementally. If edit/write tools are unavailable, provide the complete replacement in ${EXIT_PLAN_MODE_TOOL_NAME}'s plan argument.`
+		: `Write the final plan to ${planPath}. Use an active edit/write tool when available; otherwise provide the complete Markdown plan in ${EXIT_PLAN_MODE_TOOL_NAME}'s plan argument. This is the only file you may create or modify.`;
 }
 
 export function buildFullPlanModePrompt(options: { planPath: string; planExists: boolean; reentry?: boolean }): string {
@@ -39,14 +39,14 @@ ${planFileSection(options.planPath, options.planExists)}
 1. Understand the request and trace the relevant code paths. Reuse existing functions and patterns where possible.
 2. Identify ambiguities that materially affect the implementation. Use ${ASK_USER_QUESTION_TOOL_NAME} for those questions.
 3. Compare viable approaches and choose one recommended design.
-4. Write a concise, executable plan to the plan file. Include critical file paths, existing functions to reuse, sequencing, risks, and end-to-end verification.
+4. Produce a concise, executable plan. Include critical file paths, existing functions to reuse, sequencing, risks, and end-to-end verification. Save it with an active edit/write tool, or pass the complete Markdown in ${EXIT_PLAN_MODE_TOOL_NAME}'s plan argument when those tools are unavailable.
 5. When the plan is complete, call ${EXIT_PLAN_MODE_TOOL_NAME}.
 
 End a planning turn only by asking a necessary question with ${ASK_USER_QUESTION_TOOL_NAME} or by calling ${EXIT_PLAN_MODE_TOOL_NAME}. Never ask “is this plan okay?” in plain text; ${EXIT_PLAN_MODE_TOOL_NAME} is the approval mechanism.`;
 }
 
 export function buildSparsePlanModePrompt(planPath: string): string {
-	return `Plan mode remains active. Stay read-only except for the plan file (${planPath}). Continue exploring, clarify only material ambiguities with ${ASK_USER_QUESTION_TOOL_NAME}, keep the plan file current, and finish with ${EXIT_PLAN_MODE_TOOL_NAME}. Never request plan approval in ordinary text.`;
+	return `Plan mode remains active. Stay read-only except for the plan file (${planPath}). Continue exploring, clarify only material ambiguities with ${ASK_USER_QUESTION_TOOL_NAME}, keep the plan current using active edit/write tools or ${EXIT_PLAN_MODE_TOOL_NAME}'s plan argument, and finish with ${EXIT_PLAN_MODE_TOOL_NAME}. Never request plan approval in ordinary text.`;
 }
 
 export function buildPlanModeExitPrompt(planPath: string, plan: string | null): string {
