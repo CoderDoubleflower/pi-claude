@@ -99,35 +99,92 @@ function unsafe(reason: string): PlanShellDecision {
 	return { safe: false, reason };
 }
 
-function hasOption(tokens: readonly string[], short: string, long: string): boolean {
+function checkShellSyntax(command: string): PlanShellDecision | undefined {
+	let quote: "'" | '"' | null = null;
+	let escaped = false;
+
+	for (const char of command) {
+		if (char === "\r" || char === "\n") return unsafe("multi-line shell commands are not allowed in plan mode");
+
+		if (escaped) {
+			escaped = false;
+			continue;
+		}
+		if (char === "\\" && quote !== "'") {
+			escaped = true;
+			continue;
+		}
+		if (quote === "'") {
+			if (char === "'") quote = null;
+			continue;
+		}
+		if (quote === '"') {
+			if (char === '"') {
+				quote = null;
+				continue;
+			}
+			if (char === "$" || char === "`") {
+				return unsafe("shell expansion and command substitution are not allowed in plan mode");
+			}
+			continue;
+		}
+		if (char === "'" || char === '"') {
+			quote = char;
+			continue;
+		}
+		if (char === "$" || char === "`") {
+			return unsafe("shell expansion and command substitution are not allowed in plan mode");
+		}
+		if (";&|<>".includes(char)) {
+			return unsafe("shell control operators and redirections are not allowed in plan mode");
+		}
+		if ("*?[]{}".includes(char)) {
+			return unsafe("unquoted glob and brace expansion are not allowed in plan mode");
+		}
+	}
+
+	return escaped || quote ? unsafe("command could not be parsed safely") : undefined;
+}
+
+function hasOption(tokens: readonly string[], short: string, long?: string): boolean {
 	return tokens.some(
-		(token, index) =>
+		(token) =>
 			token === short ||
-			token === long ||
-			token.startsWith(`${long}=`) ||
-			(short.length === 2 && token.startsWith(short) && token.length > 2 && index > 0),
+			(long !== undefined && (token === long || token.startsWith(`${long}=`))) ||
+			(short.length === 2 && token.startsWith(short) && token.length > 2),
 	);
 }
 
 function checkSimpleReadCommand(executable: string, tokens: string[]): PlanShellDecision {
+	const args = tokens.slice(1);
 	switch (executable) {
 		case "sort":
 		case "diff":
 		case "tree":
 		case "less":
-			return hasOption(tokens.slice(1), "-o", "--output") || (executable === "less" && tokens.includes("-O"))
+			return hasOption(args, "-o", "--output") || (executable === "less" && hasOption(args, "-O"))
 				? unsafe(`${executable} output-file options are not allowed`)
 				: { safe: true };
 		case "uniq": {
-			const positionals = tokens.slice(1).filter((token) => !token.startsWith("-"));
+			const positionals = args.filter((token) => !token.startsWith("-"));
 			return positionals.length > 1 ? unsafe("uniq output files are not allowed") : { safe: true };
 		}
 		case "fd":
-			return tokens.some((token) => ["-x", "-X", "--exec", "--exec-batch"].includes(token))
+			return args.some(
+				(token) =>
+					token === "-x" ||
+					token === "-X" ||
+					(token.startsWith("-x") && token.length > 2) ||
+					(token.startsWith("-X") && token.length > 2) ||
+					token === "--exec" ||
+					token.startsWith("--exec=") ||
+					token === "--exec-batch" ||
+					token.startsWith("--exec-batch="),
+			)
 				? unsafe("fd command execution is not allowed")
 				: { safe: true };
 		case "date":
-			return tokens.some((token) => token === "-s" || token === "--set" || token.startsWith("--set="))
+			return hasOption(args, "-s", "--set")
 				? unsafe("date may not change the system clock")
 				: { safe: true };
 		default:
@@ -145,7 +202,9 @@ function checkGit(tokens: string[]): PlanShellDecision {
 
 	if (subcommand === "branch") {
 		const args = tokens.slice(2);
-		const mutationFlag = args.some((arg) => /^-(?:d|D|m|M|c|C)$/.test(arg) || arg.startsWith("--delete"));
+		const mutationFlag = args.some(
+			(arg) => /^-(?:d|D|m|M|c|C)/.test(arg) || arg === "--delete" || arg.startsWith("--delete="),
+		);
 		const positional = args.filter((arg) => !arg.startsWith("-"));
 		return mutationFlag || positional.length > 0
 			? unsafe("git branch mutation is not allowed in plan mode")
@@ -180,9 +239,8 @@ export function checkPlanReadOnlyCommand(command: string): PlanShellDecision {
 	const trimmed = command.trim();
 	if (!trimmed) return unsafe("empty command");
 
-	if (/\r|\n/.test(trimmed)) return unsafe("multi-line shell commands are not allowed in plan mode");
-	if (/`|\$\(|<\(|>\(/.test(trimmed)) return unsafe("command and process substitution are not allowed");
-	if (/(^|[^\\])[;&|<>]/.test(trimmed)) return unsafe("shell control operators and redirections are not allowed");
+	const syntaxDecision = checkShellSyntax(trimmed);
+	if (syntaxDecision) return syntaxDecision;
 
 	const tokens = tokenize(trimmed);
 	if (!tokens || tokens.length === 0) return unsafe("command could not be parsed safely");
