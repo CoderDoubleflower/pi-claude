@@ -1,3 +1,4 @@
+# Trigger conflict hunk capture.
 name: Discover upstream merge conflicts
 
 on:
