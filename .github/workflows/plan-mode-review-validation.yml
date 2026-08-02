@@ -44,5 +44,8 @@ jobs:
           git commit -m "style(plan-mode): apply Biome formatting"
           git push
 
+      - name: Build workspace
+        run: npm run build
+
       - name: Run plan mode tests
         run: npx vitest --run packages/coding-agent/test/plan-mode.test.ts
