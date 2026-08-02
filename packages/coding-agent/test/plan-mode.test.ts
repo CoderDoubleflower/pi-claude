@@ -41,7 +41,9 @@ afterEach(() => {
 
 describe("Claude-style plan mode", () => {
 	it("is registered as a hidden built-in extension", () => {
-		expect(builtInExtensions).toContainEqual(expect.objectContaining({ name: "plan-mode", hidden: true }));
+		expect(builtInExtensions).toContainEqual(
+			expect.objectContaining({ name: "plan-mode", hidden: true }),
+		);
 	});
 
 	it("exposes only planning-safe tools and restores the previous tool set", () => {
@@ -85,7 +87,7 @@ describe("Claude-style plan mode", () => {
 	});
 
 	it("creates stable session plan identities, writes atomically, and copies on fork", () => {
-		const agentDir = createTemporaryDirectory();
+		const agentDir = join(createTemporaryDirectory(), "agent");
 		const identity = createPlanIdentity("session-123", { agentDir });
 		const repeated = createPlanIdentity("session-123", { agentDir });
 		expect(repeated).toEqual(identity);
@@ -103,7 +105,7 @@ describe("Claude-style plan mode", () => {
 	});
 
 	it("avoids an existing plan slug instead of overwriting it", () => {
-		const agentDir = createTemporaryDirectory();
+		const agentDir = join(createTemporaryDirectory(), "agent");
 		const first = createPlanIdentity("session-collision", { agentDir });
 		const second = createPlanIdentity("session-collision", {
 			agentDir,
@@ -178,7 +180,10 @@ describe("Claude-style plan mode", () => {
 	});
 
 	it("injects the plan path, hard read-only restriction, and approval protocol", () => {
-		const prompt = buildFullPlanModePrompt({ planPath: "/tmp/example-plan.md", planExists: false });
+		const prompt = buildFullPlanModePrompt({
+			planPath: "/tmp/example-plan.md",
+			planExists: false,
+		});
 		expect(prompt).toContain("/tmp/example-plan.md");
 		expect(prompt).toContain("only file you may create or modify");
 		expect(prompt).toContain("AskUserQuestion");
