@@ -39,6 +39,9 @@ jobs:
           git remote add upstream https://github.com/earendil-works/pi.git || true
           git fetch upstream main
           git merge --no-commit --no-ff upstream/main || true
+          git checkout HEAD -- \
+            packages/coding-agent/test/assistant-message.test.ts \
+            packages/coding-agent/test/user-message.test.ts
           python3 - <<'PY'
           from pathlib import Path
           path = Path('.github/scripts/resolve-upstream-sync.py')
