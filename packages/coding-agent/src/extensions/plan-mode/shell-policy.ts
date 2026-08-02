@@ -138,8 +138,8 @@ function checkShellSyntax(command: string): PlanShellDecision | undefined {
 		if (";&|<>".includes(char)) {
 			return unsafe("shell control operators and redirections are not allowed in plan mode");
 		}
-		if ("*?[]{}".includes(char)) {
-			return unsafe("unquoted glob and brace expansion are not allowed in plan mode");
+		if ("*?[]{}()".includes(char)) {
+			return unsafe("unquoted shell expansion syntax is not allowed in plan mode");
 		}
 	}
 
@@ -155,10 +155,17 @@ function hasOption(tokens: readonly string[], short: string, long?: string): boo
 	);
 }
 
+function hasLongOption(tokens: readonly string[], option: string): boolean {
+	return tokens.some((token) => token === option || token.startsWith(`${option}=`));
+}
+
 function checkSimpleReadCommand(executable: string, tokens: string[]): PlanShellDecision {
 	const args = tokens.slice(1);
 	switch (executable) {
 		case "sort":
+			return hasOption(args, "-o", "--output") || hasLongOption(args, "--compress-program")
+				? unsafe("sort output and external compression options are not allowed")
+				: { safe: true };
 		case "diff":
 		case "tree":
 		case "less":
@@ -169,6 +176,10 @@ function checkSimpleReadCommand(executable: string, tokens: string[]): PlanShell
 			const positionals = args.filter((token) => !token.startsWith("-"));
 			return positionals.length > 1 ? unsafe("uniq output files are not allowed") : { safe: true };
 		}
+		case "rg":
+			return hasLongOption(args, "--pre")
+				? unsafe("rg preprocessors may execute arbitrary commands")
+				: { safe: true };
 		case "fd":
 			return args.some(
 				(token) =>
@@ -183,9 +194,17 @@ function checkSimpleReadCommand(executable: string, tokens: string[]): PlanShell
 			)
 				? unsafe("fd command execution is not allowed")
 				: { safe: true };
+		case "file":
+			return hasOption(args, "-C", "--compile")
+				? unsafe("file compilation writes a magic database")
+				: { safe: true };
 		case "date":
 			return hasOption(args, "-s", "--set")
 				? unsafe("date may not change the system clock")
+				: { safe: true };
+		case "bat":
+			return hasLongOption(args, "--pager")
+				? unsafe("bat custom pagers may execute arbitrary commands")
 				: { safe: true };
 		default:
 			return { safe: true };
