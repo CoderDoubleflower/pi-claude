@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -9,6 +9,7 @@ import {
 	copyPlanFile,
 	createPlanIdentity,
 	isCurrentPlanFile,
+	isPathInsidePlansDirectory,
 	readPlanFile,
 	writePlanFile,
 } from "../src/extensions/plan-mode/plan-store.ts";
@@ -44,7 +45,7 @@ describe("Claude-style plan mode", () => {
 		expect(builtInExtensions).toContainEqual(expect.objectContaining({ name: "plan-mode", hidden: true }));
 	});
 
-	it("exposes only planning-safe tools and restores the previous tool set", () => {
+	it("keeps only previously active planning-safe tools and restores the exact normal tool set", () => {
 		const available = [
 			"read",
 			"bash",
@@ -59,32 +60,33 @@ describe("Claude-style plan mode", () => {
 			"AskUserQuestion",
 			"dangerous-extension-tool",
 		];
-		const planning = getPlanModeTools(["read", "bash", "edit", "write", "TodoWrite"], available);
-
-		expect(planning).toEqual([
+		const normalTools = [
 			"read",
-			"grep",
-			"find",
-			"ls",
 			"bash",
 			"edit",
 			"write",
-			"AskUserQuestion",
-			"ExitPlanMode",
-		]);
-		expect(planning).not.toContain("TodoWrite");
-		expect(planning).not.toContain("dangerous-extension-tool");
-
-		expect(getRestoredTools(["read", "bash", "TodoWrite"], planning, available)).toEqual([
-			"read",
-			"bash",
 			"TodoWrite",
 			"EnterPlanMode",
 			"AskUserQuestion",
+		];
+		const planning = getPlanModeTools(normalTools, available);
+
+		expect(planning).toEqual(["read", "bash", "edit", "write", "AskUserQuestion", "ExitPlanMode"]);
+		expect(planning).not.toContain("grep");
+		expect(planning).not.toContain("find");
+		expect(planning).not.toContain("ls");
+		expect(planning).not.toContain("TodoWrite");
+		expect(planning).not.toContain("dangerous-extension-tool");
+		expect(getRestoredTools(normalTools, planning, available)).toEqual(normalTools);
+
+		expect(getPlanModeTools(["read", "EnterPlanMode", "AskUserQuestion"], available)).toEqual([
+			"read",
+			"AskUserQuestion",
+			"ExitPlanMode",
 		]);
 	});
 
-	it("creates stable session plan identities, writes atomically, and copies on fork", () => {
+	it("creates stable session plan identities, replaces existing plans, and copies on fork", () => {
 		const agentDir = join(createTemporaryDirectory(), "agent");
 		const identity = createPlanIdentity("session-123", { agentDir });
 		const repeated = createPlanIdentity("session-123", { agentDir });
@@ -93,6 +95,8 @@ describe("Claude-style plan mode", () => {
 
 		writePlanFile(identity.planPath, "# Plan\n\n- Inspect the code");
 		expect(readPlanFile(identity.planPath)).toContain("Inspect the code");
+		writePlanFile(identity.planPath, "# Updated Plan\n\n- Verify the fix");
+		expect(readPlanFile(identity.planPath)).toContain("Verify the fix");
 		expect(isCurrentPlanFile(identity.planPath, identity.planPath, agentDir)).toBe(true);
 		expect(isCurrentPlanFile(join(agentDir, "other.md"), identity.planPath, agentDir)).toBe(false);
 		expect(isCurrentPlanFile(`${identity.planPath}.bak`, identity.planPath, agentDir)).toBe(false);
@@ -100,6 +104,18 @@ describe("Claude-style plan mode", () => {
 		const forked = createPlanIdentity("session-456", { agentDir });
 		expect(copyPlanFile(identity.planPath, forked.planPath)).toBe(true);
 		expect(readPlanFile(forked.planPath)).toBe(readPlanFile(identity.planPath));
+	});
+
+	it("checks plans-directory membership without creating the directory", () => {
+		const root = createTemporaryDirectory();
+		const agentDir = join(root, "agent");
+		const plansDirectory = join(root, "plans");
+		const planPath = join(plansDirectory, "example.md");
+
+		expect(existsSync(plansDirectory)).toBe(false);
+		expect(isPathInsidePlansDirectory(planPath, agentDir)).toBe(true);
+		expect(isPathInsidePlansDirectory(join(root, "outside.md"), agentDir)).toBe(false);
+		expect(existsSync(plansDirectory)).toBe(false);
 	});
 
 	it("avoids an existing plan slug instead of overwriting it", () => {
@@ -116,6 +132,7 @@ describe("Claude-style plan mode", () => {
 	it.each([
 		"pwd",
 		"rg plan packages/coding-agent/src",
+		"rg '$HOME' packages/coding-agent/src",
 		"find . -name '*.ts'",
 		"git status --short",
 		"git diff -- packages/coding-agent/src",
@@ -129,19 +146,30 @@ describe("Claude-style plan mode", () => {
 	it.each([
 		"git checkout main",
 		"git branch feature-plan",
+		"git branch -Dmain",
 		"git remote add mirror https://example.com/repo.git",
 		"git diff --output=/tmp/patch",
 		"find . -delete",
 		"find . -exec touch {} ;",
+		"find . $'-exec' touch {} +",
+		"find . ${PLAN_PRIMARY} touch {} +",
+		"find . -{ex,}ec touch {} +",
+		"find . -*",
 		"fd . -x rm {}",
+		"fd . --exec=rm",
 		"sort input -o output",
+		"diff -oout before after",
 		"uniq input output",
 		"tree -o tree.txt",
+		"tree -otree.txt",
+		"less -Oout.txt input",
 		"npm audit fix",
 		"date --set='2030-01-01'",
+		"date -s2030-01-01",
 		"cat input > output",
 		"echo $(touch output)",
 		"rg foo | tee output",
+		String.raw`echo \\; touch output`,
 		'python -c \'open("output", "w").write("x")\'',
 	])("blocks state-changing command: %s", (command) => {
 		expect(checkPlanReadOnlyCommand(command).safe).toBe(false);
