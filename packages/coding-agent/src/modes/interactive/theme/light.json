@@ -33,6 +33,7 @@
 		"assistantMarker": "#000000",
 
 		"selectedBg": "selectedBg",
+		"scrollbarThumb": "selectedBg",
 		"userMessageBg": "userMsgBg",
 		"userMessageText": "text",
 		"customMessageBg": "customMsgBg",

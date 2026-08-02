@@ -143,13 +143,13 @@ vim ~/.pi/agent/themes/my-theme.json
 
 - `name` is required, must be unique, and must not contain `/`.
 - `vars` is optional. Define reusable colors here, then reference them in `colors`.
-- `colors` must define all 51 required tokens. `assistantMarker`, `thinkingMax`, `toolRunning`, `toolSuccess`, and `toolError` are optional; they fall back to `text`, `thinkingXhigh`, `warning`, `success`, and `error`, respectively.
+- `colors` must define all 51 required tokens. `assistantMarker`, `thinkingMax`, `toolRunning`, `toolSuccess`, `toolError`, and `scrollbarThumb` are optional; they fall back to `text`, `thinkingXhigh`, `warning`, `success`, `error`, and `selectedBg`, respectively.
 
 The `$schema` field enables editor auto-completion and validation.
 
 ## Color Tokens
 
-Every theme must define all 51 required color tokens. `assistantMarker`, `thinkingMax`, `toolRunning`, `toolSuccess`, and `toolError` are optional for compatibility with existing themes; when omitted, they use `text`, `thinkingXhigh`, `warning`, `success`, and `error`, respectively.
+Every theme must define all 51 required color tokens. `assistantMarker`, `thinkingMax`, `toolRunning`, `toolSuccess`, `toolError`, and `scrollbarThumb` are optional for compatibility with existing themes; when omitted, they use `text`, `thinkingXhigh`, `warning`, `success`, `error`, and `selectedBg`, respectively.
 
 ### Core UI (11 required, 1 optional)
 
@@ -173,6 +173,7 @@ Every theme must define all 51 required color tokens. `assistantMarker`, `thinki
 | Token | Purpose |
 |-------|---------|
 | `selectedBg` | Selected line background |
+| `scrollbarThumb` | Fullscreen transcript scrollbar thumb; optional, falls back to `selectedBg` |
 | `userMessageBg` | User message background |
 | `userMessageText` | User message text |
 | `customMessageBg` | Extension message background |
