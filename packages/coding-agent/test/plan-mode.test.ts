@@ -128,6 +128,8 @@ describe("Claude-style plan mode", () => {
 
 	it.each([
 		"git checkout main",
+		"git branch feature-plan",
+		"git remote add mirror https://example.com/repo.git",
 		"git diff --output=/tmp/patch",
 		"find . -delete",
 		"find . -exec touch {} ;",
