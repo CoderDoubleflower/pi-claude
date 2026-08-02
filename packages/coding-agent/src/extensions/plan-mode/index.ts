@@ -631,8 +631,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		]);
 		if (!allowed.has(event.toolName)) {
 			return {
-					block: true,
-					reason: `Tool ${event.toolName} is unavailable in plan mode because it is not known to be read-only.`,
+				block: true,
+				reason: `Tool ${event.toolName} is unavailable in plan mode because it is not known to be read-only.`,
 			};
 		}
 	});

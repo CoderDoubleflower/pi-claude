@@ -199,9 +199,7 @@ function checkSimpleReadCommand(executable: string, tokens: string[]): PlanShell
 				? unsafe("file compilation writes a magic database")
 				: { safe: true };
 		case "date":
-			return hasOption(args, "-s", "--set")
-				? unsafe("date may not change the system clock")
-				: { safe: true };
+			return hasOption(args, "-s", "--set") ? unsafe("date may not change the system clock") : { safe: true };
 		case "bat":
 			return hasLongOption(args, "--pager")
 				? unsafe("bat custom pagers may execute arbitrary commands")

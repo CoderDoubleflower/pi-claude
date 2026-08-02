@@ -60,15 +60,7 @@ describe("Claude-style plan mode", () => {
 			"AskUserQuestion",
 			"dangerous-extension-tool",
 		];
-		const normalTools = [
-			"read",
-			"bash",
-			"edit",
-			"write",
-			"TodoWrite",
-			"EnterPlanMode",
-			"AskUserQuestion",
-		];
+		const normalTools = ["read", "bash", "edit", "write", "TodoWrite", "EnterPlanMode", "AskUserQuestion"];
 		const planning = getPlanModeTools(normalTools, available);
 
 		expect(planning).toEqual(["read", "bash", "edit", "write", "AskUserQuestion", "ExitPlanMode"]);
