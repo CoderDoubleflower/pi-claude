@@ -4,74 +4,79 @@ on:
   pull_request:
     branches:
       - main
-    types: [opened, synchronize, reopened]
+    types: [reopened]
 
 permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: upstream-sync-20260803
+  cancel-in-progress: false
+
 jobs:
-  discover:
+  merge-and-validate:
     if: github.head_ref == 'automation/upstream-sync-20260803'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: automation/upstream-sync-20260803
 
-      - name: Discover merge conflicts
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Merge and resolve upstream
         shell: bash
         run: |
-          set -uo pipefail
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote add upstream https://github.com/earendil-works/pi.git || true
           git fetch upstream main
+          git merge --no-commit --no-ff upstream/main || true
+          python3 .github/scripts/resolve-upstream-sync.py
 
-          base_sha=$(git merge-base HEAD upstream/main)
-          local_sha=$(git rev-parse HEAD)
-          upstream_sha=$(git rev-parse upstream/main)
+      - name: Regenerate dependency locks
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --ignore-scripts
+          npm run install-lock:coding-agent
+          npm run shrinkwrap:coding-agent
+          npm install --package-lock-only --ignore-scripts
 
-          set +e
-          git merge --no-commit --no-ff upstream/main
-          merge_status=$?
-          set -e
+      - name: Build workspace
+        run: npm run build
 
-          {
-            echo "base=$base_sha"
-            echo "local=$local_sha"
-            echo "upstream=$upstream_sha"
-            echo "merge_status=$merge_status"
-          } > .upstream-sync-status.txt
+      - name: Validate merged behavior
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx vitest run \
+            packages/coding-agent/test/assistant-message.test.ts \
+            packages/coding-agent/test/user-message.test.ts \
+            packages/coding-agent/test/claude-status.test.ts \
+            packages/coding-agent/test/claude-tool-display.test.ts \
+            packages/coding-agent/test/plan-mode.test.ts \
+            packages/coding-agent/test/todo-panel.test.ts \
+            packages/coding-agent/test/interactive-tui.test.ts \
+            packages/coding-agent/test/scrollbar-theme.test.ts
+          npm run check:pinned-deps
+          npm run check:ts-imports
+          npm run check:shrinkwrap
+          npm run check:install-lock:coding-agent
+          npx tsgo --noEmit
 
-          if [ "$merge_status" -ne 0 ]; then
-            git diff --name-only --diff-filter=U | sort > /tmp/conflicts.txt
-            git diff --cc > .upstream-sync-conflicts.diff
-            {
-              echo "# Upstream merge conflicts"
-              echo
-              echo "Generated while merging earendil-works/pi main into pi-claude."
-              echo
-              echo '```text'
-              cat /tmp/conflicts.txt
-              echo '```'
-              echo
-              echo "## Index stages"
-              echo
-              echo '```text'
-              git ls-files -u
-              echo '```'
-            } > .upstream-sync-conflicts.md
-            git merge --abort
-          else
-            : > .upstream-sync-conflicts.diff
-            echo "# Upstream merge conflicts" > .upstream-sync-conflicts.md
-            echo >> .upstream-sync-conflicts.md
-            echo "No textual conflicts." >> .upstream-sync-conflicts.md
-            git commit -m "Merge upstream earendil-works/pi"
-          fi
-
-          git add .upstream-sync-status.txt .upstream-sync-conflicts.md .upstream-sync-conflicts.diff
-          git commit -m "chore: record upstream merge analysis" || true
+      - name: Commit resolved upstream merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -A
+          git diff --cached --check
+          git commit -m "Merge upstream earendil-works/pi"
           git push origin HEAD:automation/upstream-sync-20260803
