@@ -245,7 +245,10 @@ function checkGit(tokens: string[]): PlanShellDecision {
 	if (hasLongOption(args, "--output")) {
 		return unsafe("git output-file options are not allowed in plan mode");
 	}
-	if (hasAnyLongOption(args, GIT_EXECUTION_OPTIONS) || args.some((token) => token === "-O" || token.startsWith("-O"))) {
+	if (
+		hasAnyLongOption(args, GIT_EXECUTION_OPTIONS) ||
+		args.some((token) => token === "-O" || token.startsWith("-O"))
+	) {
 		return unsafe("git options that invoke external helpers are not allowed in plan mode");
 	}
 
@@ -274,13 +277,9 @@ function checkGit(tokens: string[]): PlanShellDecision {
 
 	if (subcommand === "config") {
 		const configArgs = tokens.slice(2);
-		const mutationFlag =
-			configArgs.includes("-e") ||
-			hasAnyLongOption(configArgs, GIT_CONFIG_MUTATION_OPTIONS);
+		const mutationFlag = configArgs.includes("-e") || hasAnyLongOption(configArgs, GIT_CONFIG_MUTATION_OPTIONS);
 		const hasReadAction = configArgs.includes("-l") || hasAnyLongOption(configArgs, GIT_CONFIG_READ_OPTIONS);
-		return hasReadAction && !mutationFlag
-			? { safe: true }
-			: unsafe("git config is allowed only for reads");
+		return hasReadAction && !mutationFlag ? { safe: true } : unsafe("git config is allowed only for reads");
 	}
 
 	return unsafe(`git ${subcommand} may change repository state`);
