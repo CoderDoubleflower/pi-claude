@@ -235,7 +235,9 @@ function checkSimpleReadCommand(executable: string, tokens: string[]): PlanShell
 		case "date":
 			return hasOption(args, "-s", "--set") ? unsafe("date may not change the system clock") : { safe: true };
 		case "bat":
-			return args.includes("cache") || hasLongOption(args, "--pager") || hasLongOption(args, "--generate-config-file")
+			return args.includes("cache") ||
+				hasLongOption(args, "--pager") ||
+				hasLongOption(args, "--generate-config-file")
 				? unsafe("bat cache, pager, and config-generation operations are not allowed")
 				: { safe: true };
 		default:
