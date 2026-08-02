@@ -1,0 +1,1023 @@
+diff --cc package-lock.json
+index a82de3ec7,442d4d74d..000000000
+--- a/package-lock.json
++++ b/package-lock.json
+@@@ -794,6 -790,14 +794,17 @@@
+  			"resolved": "packages/ai",
+  			"link": true
+  		},
+++<<<<<<< HEAD
+++=======
++ 		"node_modules/@earendil-works/pi-client": {
++ 			"resolved": "packages/client",
++ 			"link": true
++ 		},
++ 		"node_modules/@earendil-works/pi-coding-agent": {
++ 			"resolved": "packages/coding-agent",
++ 			"link": true
++ 		},
+++>>>>>>> upstream/main
+  		"node_modules/@earendil-works/pi-evals": {
+  			"resolved": "packages/evals",
+  			"link": true
+@@@ -5497,9 -5505,24 +5512,24 @@@
+  			"dev": true,
+  			"license": "MIT"
+  		},
++ 		"packages/client": {
++ 			"name": "@earendil-works/pi-client",
++ 			"version": "0.83.0",
++ 			"license": "MIT",
++ 			"dependencies": {
++ 				"@earendil-works/pi-protocol": "^0.83.0"
++ 			},
++ 			"devDependencies": {
++ 				"shx": "0.4.0",
++ 				"vitest": "4.1.9"
++ 			},
++ 			"engines": {
++ 				"node": ">=22.19.0"
++ 			}
++ 		},
+  		"packages/coding-agent": {
+ -			"name": "@earendil-works/pi-coding-agent",
+ -			"version": "0.83.0",
+ +			"name": "@doubleflower/pi-claude",
+ +			"version": "0.83.3",
+  			"license": "MIT",
+  			"dependencies": {
+  				"@earendil-works/pi-agent-core": "^0.83.0",
+@@@ -5674,13 -5714,16 +5721,20 @@@
+  			"version": "0.83.0",
+  			"license": "MIT",
+  			"dependencies": {
+++<<<<<<< HEAD
+ +				"@doubleflower/pi-claude": "^0.83.3"
+++=======
++ 				"@earendil-works/pi-ai": "^0.83.0",
++ 				"@earendil-works/pi-coding-agent": "^0.83.0",
++ 				"@earendil-works/pi-protocol": "^0.83.0"
+++>>>>>>> upstream/main
+  			},
+  			"bin": {
+- 				"server": "dist/cli.js"
++ 				"server": "dist/legacy/cli.js"
+  			},
+  			"devDependencies": {
+- 				"shx": "0.4.0"
++ 				"shx": "0.4.0",
++ 				"vitest": "4.1.9"
+  			},
+  			"engines": {
+  				"node": ">=22.19.0"
+diff --cc packages/coding-agent/CHANGELOG.md
+index b7562ba74,762d7b249..000000000
+--- a/packages/coding-agent/CHANGELOG.md
++++ b/packages/coding-agent/CHANGELOG.md
+@@@ -9,13 -5,25 +9,34 @@@
+  ### Added
+  
+  - Added chainable `pi.registerMarkdownTransformer()` hooks for display-only transformation of user and assistant Markdown.
+++<<<<<<< HEAD
+ +- Added `--alt` to run interactive mode with the alternate-screen TUI ([#7304](https://github.com/earendil-works/pi/issues/7304)).
+ +
+ +### Fixed
+ +
+ +- Fixed mid-task compaction to remain visibly active, use Claude Code's compaction spinner and compact-summary transcript row, finalize task duration only after all continuations settle, and keep context usage finite after compaction.
+ +- Fixed published npm installs failing at startup when the bundled 0.83.0 runtime packages predate newer workspace exports.
+++=======
++ - Added an experimental fullscreen UI mode, selectable through `--ui-mode fullscreen` or `/settings` ([#7304](https://github.com/earendil-works/pi/issues/7304)).
++ - Added a sticky editor, status, widget, and footer dock to fullscreen mode while keeping the transcript independently scrollable.
++ - Added a draggable transcript scrollbar to fullscreen mode with configurable `auto`, `always`, and `hidden` modes through `/settings`; `always` reserves the rightmost column.
++ - Added page scrolling and marked-message navigation shortcuts to fullscreen mode.
++ - Added an optional `scrollbarThumb` theme color for fullscreen scrollbar thumbs, falling back to `selectedBg`.
++ 
++ ### Fixed
++ 
++ - Fixed Kitty image previews in fullscreen mode overlapping the sticky editor and footer dock while scrolling.
++ - Fixed image-heavy fullscreen sessions lagging when layout changes retransmitted visible Kitty image payloads and rendered the transcript twice per frame.
++ - Fixed spaces in `/settings` searches toggling the highlighted setting while typing multi-word queries such as **UI mode** or **Quiet startup**.
++ - Fixed custom editors not inheriting the default editor's autocomplete dropdown item limit ([#7333](https://github.com/earendil-works/pi/issues/7333)).
++ - Fixed malformed resource arrays in package manifests crashing session startup ([#7187](https://github.com/earendil-works/pi/issues/7187)).
++ - Fixed the DOOM overlay example downloading its shareware WAD from a dead URL.
+++>>>>>>> upstream/main
+  - Fixed `setToolsExpanded(false)` to be a no-op when tool output is already collapsed, avoiding redundant `Tool output: collapsed` startup notices from extensions ([#7292](https://github.com/earendil-works/pi/issues/7292)).
++ - Fixed extension-driven model calls in custom compaction, handoff, and Q&A examples to dispatch through the coding-agent model runtime so custom providers and resolved auth options are preserved ([#7325](https://github.com/earendil-works/pi/pull/7325)).
++ - Fixed long-running sessions using stale credentials after another process updates `auth.json` without serializing concurrent credential reads and delaying startup ([#7319](https://github.com/earendil-works/pi/issues/7319)).
++ - Updated the packaged `brace-expansion` dependency to 5.0.8 to address GHSA-mh99-v99m-4gvg ([#7316](https://github.com/earendil-works/pi/issues/7316)).
++ - Fixed forced model availability refreshes remaining blocked behind a stalled earlier refresh ([#7301](https://github.com/earendil-works/pi/issues/7301), [#7421](https://github.com/earendil-works/pi/pull/7421) by [@a-yeyang](https://github.com/a-yeyang)).
+  
+  ## [0.83.0] - 2026-07-29
+  
+diff --cc packages/coding-agent/README.md
+index d5bfc9a1a,b1d02ae1b..000000000
+--- a/packages/coding-agent/README.md
++++ b/packages/coding-agent/README.md
+@@@ -110,55 -335,361 +110,262 @@@ Because `pi-claude` tracks upstream Pi
+  
+  ## Customization
+  
+ -### Prompt Templates
+ +Pi's customization model is intentionally preserved:
+  
+ -Reusable prompts as Markdown files. Type `/name` to expand.
+ +- **Extensions** add tools, commands, event hooks, and UI components.
+ +- **Skills** provide reusable instructions and workflows.
+ +- **Prompt templates** create reusable prompts.
+ +- **Themes** control terminal colors, including the additional Claude-style marker colors.
+ +- **Pi packages** bundle and distribute extensions, skills, prompts, and themes through npm or Git.
+  
+ -```markdown
+ -<!-- ~/.pi/agent/prompts/review.md -->
+ -Review this code for bugs, security issues, and performance problems.
+ -Focus on: {{focus}}
+ -```
+ -
+ -Place in `~/.pi/agent/prompts/`, `.pi/prompts/`, or a [pi package](#pi-packages) to share with others. See [docs/prompt-templates.md](docs/prompt-templates.md).
+ -
+ -### Skills
+ -
+ -On-demand capability packages following the [Agent Skills standard](https://agentskills.io). Invoke via `/skill:name` or let the agent load them automatically.
+ -
+ -```markdown
+ -<!-- ~/.pi/agent/skills/my-skill/SKILL.md -->
+ -# My Skill
+ -Use this skill when the user asks about X.
+ -
+ -## Steps
+ -1. Do this
+ -2. Then that
+ -```
+ -
+ -Place in `~/.pi/agent/skills/`, `~/.agents/skills/`, `.pi/skills/`, or `.agents/skills/` (from `cwd` up through parent directories) or a [pi package](#pi-packages) to share with others. See [docs/skills.md](docs/skills.md).
+ -
+ -### Extensions
+ +See the package documentation for the complete APIs and examples.
+  
+ -<p align="center"><img src="docs/images/doom-extension.png" alt="Doom Extension" width="600"></p>
+ -
+ -TypeScript modules that extend pi with custom tools, commands, keyboard shortcuts, event handlers, and UI components.
+ -
+ -```typescript
+ -export default function (pi: ExtensionAPI) {
+ -  pi.registerTool({ name: "deploy", ... });
+ -  pi.registerCommand("stats", { ... });
+ -  pi.on("tool_call", async (event, ctx) => { ... });
+ -}
+ -```
+ +## Documentation
+  
+ -The default export can also be `async`. pi waits for async extension factories before startup continues, which is useful for one-time initialization such as fetching remote model lists before calling `pi.registerProvider()`.
+ +- [Coding-agent documentation](https://github.com/CoderDoubleflower/pi-claude/tree/main/packages/coding-agent/docs)
+ +- [Examples](https://github.com/CoderDoubleflower/pi-claude/tree/main/packages/coding-agent/examples)
+ +- [Theme documentation](https://github.com/CoderDoubleflower/pi-claude/blob/main/packages/coding-agent/docs/themes.md)
+ +- [Containerization and sandboxing](https://github.com/CoderDoubleflower/pi-claude/blob/main/packages/coding-agent/docs/containerization.md)
+ +- [Repository overview and UI progress](https://github.com/CoderDoubleflower/pi-claude#readme)
+ +- [Issue tracker](https://github.com/CoderDoubleflower/pi-claude/issues)
+  
+ -**What's possible:**
+ -- Custom tools (or replace built-in tools entirely)
+ -- Sub-agents and plan mode
+ -- Custom compaction and summarization
+ -- Permission gates and path protection
+ -- Custom editors and UI components
+ -- Status lines, headers, footers
+ -- Git checkpointing and auto-commit
+ -- SSH and sandbox execution
+ -- MCP server integration
+ -- Make pi look like Claude Code
+ -- Games while waiting (yes, Doom runs)
+ -- ...anything you can dream up
+ +## Permissions and sandboxing
+  
+ -Place in `~/.pi/agent/extensions/`, `.pi/extensions/`, or a [pi package](#pi-packages) to share with others. See [docs/extensions.md](docs/extensions.md) and [examples/extensions/](examples/extensions/).
+ +`pi-claude` runs tools with the permissions of the user and process that launched it. It does not include a built-in filesystem, process, network, or credential permission boundary.
+  
+ -### Themes
+ +Review requested operations before allowing them to affect important files or systems. For stronger isolation, run the agent inside a container, micro-VM, or policy-controlled sandbox.
+  
+ -Built-in: `dark`, `light`. Themes hot-reload: modify the active theme file and pi immediately applies changes.
+ +## Development
+  
+ -Place in `~/.pi/agent/themes/`, `.pi/themes/`, or a [pi package](#pi-packages) to share with others. See [docs/themes.md](docs/themes.md).
+ -
+ -### Pi Packages
+ -
+ -Bundle and share extensions, skills, prompts, and themes via npm or git. Find packages on [npmjs.com](https://www.npmjs.com/search?q=keywords%3Api-package) or [Discord](https://discord.com/channels/1456806362351669492/1457744485428629628).
+ -
+ -> **Security:** Pi packages run with full system access. Extensions execute arbitrary code, and skills can instruct the model to perform any action including running executables. Review source code before installing third-party packages.
+ +From the repository root:
+  
+  ```bash
+ -pi install npm:@foo/pi-tools
+ -pi install npm:@foo/pi-tools@1.2.3      # pinned version
+ -pi install git:github.com/user/repo
+ -pi install git:github.com/user/repo@v1  # tag or commit
+ -pi install git:git@github.com:user/repo
+ -pi install git:git@github.com:user/repo@v1  # tag or commit
+ -pi install https://github.com/user/repo
+ -pi install https://github.com/user/repo@v1      # tag or commit
+ -pi install ssh://git@github.com/user/repo
+ -pi install ssh://git@github.com/user/repo@v1    # tag or commit
+ -pi remove npm:@foo/pi-tools
+ -pi uninstall npm:@foo/pi-tools          # alias for remove
+ -pi list
+ -pi update                               # update pi only
+ -pi update --all                         # update pi and packages
+ -pi update --extensions                  # update packages only
+ -pi update --models                      # refresh model catalogs only
+ -pi update --self                        # update pi only
+ -pi update --self --force                # reinstall pi even if current
+ -pi update npm:@foo/pi-tools             # update one package
+ -pi config                               # enable/disable extensions, skills, prompts, themes
+ +npm install --ignore-scripts
+ +npm run build
+ +npm run check
+ +./test.sh
+  ```
+  
+ -Packages install to `~/.pi/agent/git/` (git) or `~/.pi/agent/npm/` (npm). Use `-l` for project-local installs (`.pi/git/`, `.pi/npm/`). Git `@ref` values are pinned tags or commits; pinned packages are skipped by `pi update --extensions` and `pi update --all`, so use `pi install git:host/user/repo@new-ref` to move an existing package to a new ref. Git packages install dependencies with `npm install --omit=dev` by default, so runtime deps must be listed under `dependencies`; when `npmCommand` is configured, git packages use plain `install` for compatibility with wrappers. If you use a Node version manager and want package installs to reuse a stable npm context, set `npmCommand` in `settings.json`, for example `["mise", "exec", "node@20", "--", "npm"]`.
+ -
+ -Create a package by adding a `pi` key to `package.json`:
+ -
+ -```json
+ -{
+ -  "name": "my-pi-package",
+ -  "keywords": ["pi-package"],
+ -  "pi": {
+ -    "extensions": ["./extensions"],
+ -    "skills": ["./skills"],
+ -    "prompts": ["./prompts"],
+ -    "themes": ["./themes"]
+ -  }
+ -}
+ -```
+ -
+ -Without a `pi` manifest, pi auto-discovers from conventional directories (`extensions/`, `skills/`, `prompts/`, `themes/`).
+ -
+ -See [docs/packages.md](docs/packages.md).
+ -
+ ----
+ -
+ -## Programmatic Usage
+ -
+ -### SDK
+ -
+ -```typescript
+ -import { createAgentSession, ModelRuntime, SessionManager } from "@earendil-works/pi-coding-agent";
+ -
+ -const modelRuntime = await ModelRuntime.create();
+ -const { session } = await createAgentSession({
+ -  sessionManager: SessionManager.inMemory(),
+ -  modelRuntime,
+ -});
+ -
+ -await session.prompt("What files are in the current directory?");
+ -```
+ -
+ -For advanced multi-session runtime replacement, use `createAgentSessionRuntime()` and `AgentSessionRuntime`.
+ -
+ -See [docs/sdk.md](docs/sdk.md) and [examples/sdk/](examples/sdk/).
+ -
+ -### RPC Mode
+ -
+ -For non-Node.js integrations, use RPC mode over stdin/stdout:
+ +To work on this package directly:
+  
+  ```bash
+ -pi --mode rpc
+ +cd packages/coding-agent
+ +npm run build
+ +npm test
+  ```
+  
+ -RPC mode uses strict LF-delimited JSONL framing. Clients must split records on `\n` only. Do not use generic line readers like Node `readline`, which also split on Unicode separators inside JSON payloads.
+ +## Upstream and attribution
+  
+ -See [docs/rpc.md](docs/rpc.md) for the protocol.
+ +This package is derived from Pi by Mario Zechner and the `earendil-works/pi` contributors. Upstream authors and contributors remain credited in package metadata and repository history.
+  
+++<<<<<<< HEAD
+ +Claude Code is a product of Anthropic. References to Claude Code describe the UI and interaction style this independent project is attempting to approximate.
+++=======
++ ---
++ 
++ ## Philosophy
++ 
++ Pi is aggressively extensible so it doesn't have to dictate your workflow. Features that other tools bake in can be built with [extensions](#extensions), [skills](#skills), or installed from third-party [pi packages](#pi-packages). This keeps the core minimal while letting you shape pi to fit how you work.
++ 
++ **No MCP.** Build CLI tools with READMEs (see [Skills](#skills)), or build an extension that adds MCP support. [Why?](https://mariozechner.at/posts/2025-11-02-what-if-you-dont-need-mcp/)
++ 
++ **No sub-agents.** There's many ways to do this. Spawn pi instances via tmux, or build your own with [extensions](#extensions), or install a package that does it your way.
++ 
++ **No permission popups.** Run in a container, or build your own confirmation flow with [extensions](#extensions) inline with your environment and security requirements.
++ 
++ **No plan mode.** Write plans to files, or build it with [extensions](#extensions), or install a package.
++ 
++ **No built-in to-dos.** They confuse models. Use a TODO.md file, or build your own with [extensions](#extensions).
++ 
++ **No background bash.** Use tmux. Full observability, direct interaction.
++ 
++ Read the [blog post](https://mariozechner.at/posts/2025-11-30-pi-coding-agent/) for the full rationale.
++ 
++ ---
++ 
++ ## CLI Reference
++ 
++ ```bash
++ pi [options] [@files...] [messages...]
++ ```
++ 
++ ### Package Commands
++ 
++ ```bash
++ pi install <source> [-l]     # Install package, -l for project-local
++ pi remove <source> [-l]      # Remove package
++ pi uninstall <source> [-l]   # Alias for remove
++ pi update [source|self|pi]   # Update pi only, or one package source
++ pi update --all              # Update pi and packages
++ pi update --extensions       # Update packages only
++ pi update --models           # Refresh model catalogs only
++ pi update --self             # Update pi only
++ pi update --self --force     # Reinstall pi even if current
++ pi update --extension <src>  # Update one package
++ pi list                      # List installed packages
++ pi config                    # Enable/disable package resources
++ ```
++ 
++ `pi config` and project package commands accept `--approve`/`--no-approve` to trust or ignore project-local settings for one command. `pi update` never prompts for project trust.
++ 
++ ### Modes
++ 
++ | Flag | Description |
++ |------|-------------|
++ | (default) | Interactive mode |
++ | `-p`, `--print` | Print response and exit |
++ | `--mode json` | Output all events as JSON lines (see [docs/json.md](docs/json.md)) |
++ | `--mode rpc` | RPC mode for process integration (see [docs/rpc.md](docs/rpc.md)) |
++ | `--export <in> [out]` | Export session to HTML |
++ 
++ In print mode, pi also reads piped stdin and merges it into the initial prompt:
++ 
++ ```bash
++ cat README.md | pi -p "Summarize this text"
++ ```
++ 
++ ### Model Options
++ 
++ | Option | Description |
++ |--------|-------------|
++ | `--provider <name>` | Provider (anthropic, openai, google, etc.) |
++ | `--model <pattern>` | Model pattern or ID (supports `provider/id` and optional `:<thinking>`) |
++ | `--api-key <key>` | API key (overrides env vars) |
++ | `--thinking <level>` | `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max` |
++ | `--models <patterns>` | Comma-separated patterns for Ctrl+P cycling |
++ | `--list-models [search]` | List available models |
++ 
++ ### Session Options
++ 
++ | Option | Description |
++ |--------|-------------|
++ | `-c`, `--continue` | Continue most recent session |
++ | `-r`, `--resume` | Browse and select session |
++ | `--session <path\|id>` | Use specific session file or partial UUID |
++ | `--fork <path\|id>` | Fork specific session file or partial UUID into a new session |
++ | `--session-dir <dir>` | Custom session storage directory |
++ | `--no-session` | Ephemeral mode (don't save) |
++ | `--name <name>`, `-n <name>` | Set session display name at startup |
++ 
++ ### Tool Options
++ 
++ | Option | Description |
++ |--------|-------------|
++ | `--tools <list>`, `-t <list>` | Allowlist specific tool names across built-in, extension, and custom tools |
++ | `--exclude-tools <list>`, `-xt <list>` | Disable specific tool names across built-in, extension, and custom tools |
++ | `--no-builtin-tools`, `-nbt` | Disable built-in tools by default but keep extension/custom tools enabled |
++ | `--no-tools`, `-nt` | Disable all tools by default |
++ 
++ Available built-in tools: `read`, `bash`, `edit`, `write`, `grep`, `find`, `ls`
++ 
++ ### Resource Options
++ 
++ | Option | Description |
++ |--------|-------------|
++ | `-e`, `--extension <source>` | Load extension from path, npm, or git (repeatable) |
++ | `--no-extensions` | Disable extension discovery |
++ | `--skill <path>` | Load skill (repeatable) |
++ | `--no-skills` | Disable skill discovery |
++ | `--prompt-template <path>` | Load prompt template (repeatable) |
++ | `--no-prompt-templates` | Disable prompt template discovery |
++ | `--theme <path>` | Load theme (repeatable) |
++ | `--no-themes` | Disable theme discovery |
++ | `--no-context-files`, `-nc` | Disable AGENTS.md and CLAUDE.md context file discovery |
++ 
++ Combine `--no-*` with explicit flags to load exactly what you need, ignoring settings.json (e.g., `--no-extensions -e ./my-ext.ts`).
++ 
++ ### Other Options
++ 
++ | Option | Description |
++ |--------|-------------|
++ | `--system-prompt <text>` | Replace default prompt (context files and skills still appended) |
++ | `--append-system-prompt <text>` | Append to system prompt |
++ | `--ui-mode <mode>` | UI mode: `regular` (default) or experimental `fullscreen` |
++ | `--verbose` | Force verbose startup |
++ | `-a`, `--approve` | Trust project-local files for this run |
++ | `-na`, `--no-approve` | Ignore project-local files for this run |
++ | `-h`, `--help` | Show help |
++ | `-v`, `--version` | Show version |
++ 
++ ### File Arguments
++ 
++ Prefix files with `@` to include in the message:
++ 
++ ```bash
++ pi @prompt.md "Answer this"
++ pi -p @screenshot.png "What's in this image?"
++ pi @code.ts @test.ts "Review these files"
++ ```
++ 
++ ### Examples
++ 
++ ```bash
++ # Interactive with initial prompt
++ pi "List all .ts files in src/"
++ 
++ # Non-interactive
++ pi -p "Summarize this codebase"
++ 
++ # Non-interactive with piped stdin
++ cat README.md | pi -p "Summarize this text"
++ 
++ # Named one-shot session
++ pi --name "release audit" -p "Audit this repository"
++ 
++ # Different model
++ pi --provider openai --model gpt-4o "Help me refactor"
++ 
++ # Model with provider prefix (no --provider needed)
++ pi --model openai/gpt-4o "Help me refactor"
++ 
++ # Model with thinking level shorthand
++ pi --model sonnet:high "Solve this complex problem"
++ 
++ # Limit model cycling
++ pi --models "claude-*,gpt-4o"
++ 
++ # Read-only mode
++ pi --tools read,grep,find,ls -p "Review the code"
++ 
++ # Disable one extension or built-in tool while keeping the rest available
++ pi --exclude-tools ask_question
++ 
++ # High thinking level
++ pi --thinking high "Solve this complex problem"
++ ```
++ 
++ ### Environment Variables
++ 
++ | Variable | Description |
++ |----------|-------------|
++ | `PI_CODING_AGENT` | Set to `true` by the CLI and RPC entry points so child processes can detect that they run inside Pi |
++ | `PI_CODING_AGENT_DIR` | Override config directory (default: `~/.pi/agent`) |
++ | `PI_CODING_AGENT_SESSION_DIR` | Override session storage directory (overridden by `--session-dir`) |
++ | `PI_PACKAGE_DIR` | Override package directory (useful for Nix/Guix where store paths tokenize poorly) |
++ | `PI_OFFLINE` | Disable startup network operations, including update checks, package update checks, and install/update telemetry |
++ | `PI_SKIP_VERSION_CHECK` | Skip the Pi version update check at startup. This prevents the `pi.dev` latest-version request |
++ | `PI_TELEMETRY` | Override install/update telemetry and provider attribution headers. Use `1`/`true`/`yes` to enable or `0`/`false`/`no` to disable. This does not disable update checks |
++ | `PI_CACHE_RETENTION` | Set to `long` for extended prompt cache (Anthropic: 1h, OpenAI: 24h) |
++ | `VISUAL`, `EDITOR` | Fallback external editor for Ctrl+G when `externalEditor` is unset; defaults to Notepad on Windows and `nano` elsewhere |
++ 
++ Commands run by the LLM-callable bash tool also receive current session metadata:
++ 
++ | Variable | Description |
++ |----------|-------------|
++ | `PI_SESSION_ID` | Current session ID |
++ | `PI_SESSION_FILE` | Absolute session JSONL path; unset for ephemeral sessions |
++ | `PI_PROVIDER` | Currently selected model provider |
++ | `PI_MODEL` | Currently selected model ID |
++ | `PI_REASONING_LEVEL` | Current effective reasoning level |
++ 
++ These values are resolved when each command starts. See [Environment Variables](docs/environment-variables.md#bash-tool-session-environment) for semantics, examples, and custom-tool opt-out.
++ 
++ ---
++ 
++ ## Contributing & Development
++ 
++ See [CONTRIBUTING.md](../../CONTRIBUTING.md) for guidelines and [docs/development.md](docs/development.md) for setup, forking, and debugging.
+++>>>>>>> upstream/main
+  
+  ## License
+  
+diff --cc packages/coding-agent/docs/themes.md
+index 2eaf05a30,2a00dee37..000000000
+--- a/packages/coding-agent/docs/themes.md
++++ b/packages/coding-agent/docs/themes.md
+@@@ -143,15 -141,15 +144,23 @@@ vim ~/.pi/agent/themes/my-theme.jso
+  
+  - `name` is required, must be unique, and must not contain `/`.
+  - `vars` is optional. Define reusable colors here, then reference them in `colors`.
+++<<<<<<< HEAD
+ +- `colors` must define all 51 required tokens. `assistantMarker`, `thinkingMax`, `toolRunning`, `toolSuccess`, and `toolError` are optional; they fall back to `text`, `thinkingXhigh`, `warning`, `success`, and `error`, respectively.
+++=======
++ - `colors` must define all 51 required tokens. `thinkingMax` is optional and falls back to `thinkingXhigh`; `scrollbarThumb` is optional and falls back to `selectedBg`.
+++>>>>>>> upstream/main
+  
+  The `$schema` field enables editor auto-completion and validation.
+  
+  ## Color Tokens
+  
+++<<<<<<< HEAD
+ +Every theme must define all 51 required color tokens. `assistantMarker`, `thinkingMax`, `toolRunning`, `toolSuccess`, and `toolError` are optional for compatibility with existing themes; when omitted, they use `text`, `thinkingXhigh`, `warning`, `success`, and `error`, respectively.
+++=======
++ Every theme must define all 51 required color tokens. `thinkingMax` and `scrollbarThumb` are optional for compatibility with existing themes; when omitted, they use `thinkingXhigh` and `selectedBg`, respectively.
+++>>>>>>> upstream/main
+  
+ -### Core UI (11 colors)
+ +### Core UI (11 required, 1 optional)
+  
+  | Token | Purpose |
+  |-------|---------|
+@@@ -166,9 -164,8 +175,13 @@@
+  | `dim` | Tertiary text |
+  | `text` | Default text (usually `""`) |
+  | `thinkingText` | Thinking block text |
+ +| `assistantMarker` | Assistant response marker; optional, falls back to `text` |
+  
+++<<<<<<< HEAD
+ +### Backgrounds & Content (11 required, 3 optional)
+++=======
++ ### Backgrounds & Content (11 required, 1 optional)
+++>>>>>>> upstream/main
+  
+  | Token | Purpose |
+  |-------|---------|
+diff --cc packages/coding-agent/examples/extensions/custom-compaction.ts
+index 3970a3c00,8b00346b1..000000000
+--- a/packages/coding-agent/examples/extensions/custom-compaction.ts
++++ b/packages/coding-agent/examples/extensions/custom-compaction.ts
+@@@ -13,10 -13,9 +13,15 @@@
+   *   pi --extension examples/extensions/custom-compaction.ts
+   */
+  
+ +import type { ExtensionAPI } from "@doubleflower/pi-claude";
+ +import { convertToLlm, serializeConversation } from "@doubleflower/pi-claude";
+  import { uuidv7 } from "@earendil-works/pi-ai";
+++<<<<<<< HEAD
+ +import { complete } from "@earendil-works/pi-ai/compat";
+++=======
++ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
++ import { convertToLlm, serializeConversation } from "@earendil-works/pi-coding-agent";
+++>>>>>>> upstream/main
+  
+  export default function (pi: ExtensionAPI) {
+  	pi.on("session_before_compact", async (event, ctx) => {
+diff --cc packages/coding-agent/examples/extensions/handoff.ts
+index e4f431326,74457ed7e..000000000
+--- a/packages/coding-agent/examples/extensions/handoff.ts
++++ b/packages/coding-agent/examples/extensions/handoff.ts
+@@@ -12,11 -12,10 +12,17 @@@
+   * The generated prompt appears as a draft in the editor for review/editing.
+   */
+  
+ +import type { ExtensionAPI, SessionEntry } from "@doubleflower/pi-claude";
+ +import { BorderedLoader, convertToLlm, serializeConversation } from "@doubleflower/pi-claude";
+  import type { AgentMessage } from "@earendil-works/pi-agent-core";
+++<<<<<<< HEAD
+ +import { uuidv7 } from "@earendil-works/pi-ai";
+ +import { complete, type Message } from "@earendil-works/pi-ai/compat";
+++=======
++ import { type Message, uuidv7 } from "@earendil-works/pi-ai";
++ import type { ExtensionAPI, SessionEntry } from "@earendil-works/pi-coding-agent";
++ import { BorderedLoader, convertToLlm, serializeConversation } from "@earendil-works/pi-coding-agent";
+++>>>>>>> upstream/main
+  
+  const SYSTEM_PROMPT = `You are a context transfer assistant. Given a conversation history and the user's goal for a new thread, generate a focused prompt that:
+  
+diff --cc packages/coding-agent/examples/extensions/qna.ts
+index 3327c6a38,b3d725bf8..000000000
+--- a/packages/coding-agent/examples/extensions/qna.ts
++++ b/packages/coding-agent/examples/extensions/qna.ts
+@@@ -7,9 -7,9 +7,15 @@@
+   * 3. Loads the result into the editor for user to fill in answers
+   */
+  
+++<<<<<<< HEAD
+ +import type { ExtensionAPI } from "@doubleflower/pi-claude";
+ +import { BorderedLoader } from "@doubleflower/pi-claude";
+ +import { complete, type UserMessage } from "@earendil-works/pi-ai/compat";
+++=======
++ import type { UserMessage } from "@earendil-works/pi-ai";
++ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
++ import { BorderedLoader } from "@earendil-works/pi-coding-agent";
+++>>>>>>> upstream/main
+  
+  const SYSTEM_PROMPT = `You are a question extractor. Given text from a conversation, extract any questions that need answering and format them for the user to fill in.
+  
+diff --cc packages/coding-agent/examples/sdk/02-custom-model.ts
+index c717bec85,e8f52504f..000000000
+--- a/packages/coding-agent/examples/sdk/02-custom-model.ts
++++ b/packages/coding-agent/examples/sdk/02-custom-model.ts
+@@@ -4,8 -4,7 +4,12 @@@
+   * Shows how to select a specific model and thinking level.
+   */
+  
+++<<<<<<< HEAD
+ +import { createAgentSession, ModelRuntime } from "@doubleflower/pi-claude";
+ +import { getModel } from "@earendil-works/pi-ai/compat";
+++=======
++ import { createAgentSession, ModelRuntime } from "@earendil-works/pi-coding-agent";
+++>>>>>>> upstream/main
+  
+  const modelRuntime = await ModelRuntime.create();
+  
+diff --cc packages/coding-agent/install-lock/package-lock.json
+index f471f9386,5766db1ec..000000000
+--- a/packages/coding-agent/install-lock/package-lock.json
++++ b/packages/coding-agent/install-lock/package-lock.json
+@@@ -522,6 -488,64 +522,67 @@@
+  				"node": ">=22.19.0"
+  			}
+  		},
+++<<<<<<< HEAD
+++=======
++ 		"node_modules/@earendil-works/pi-client": {
++ 			"version": "0.83.0",
++ 			"resolved": "https://registry.npmjs.org/@earendil-works/pi-client/-/pi-client-0.83.0.tgz",
++ 			"license": "MIT",
++ 			"dependencies": {
++ 				"@earendil-works/pi-protocol": "^0.83.0"
++ 			},
++ 			"engines": {
++ 				"node": ">=22.19.0"
++ 			}
++ 		},
++ 		"node_modules/@earendil-works/pi-coding-agent": {
++ 			"version": "0.83.0",
++ 			"resolved": "https://registry.npmjs.org/@earendil-works/pi-coding-agent/-/pi-coding-agent-0.83.0.tgz",
++ 			"license": "MIT",
++ 			"dependencies": {
++ 				"@earendil-works/pi-agent-core": "^0.83.0",
++ 				"@earendil-works/pi-ai": "^0.83.0",
++ 				"@earendil-works/pi-client": "^0.83.0",
++ 				"@earendil-works/pi-protocol": "^0.83.0",
++ 				"@earendil-works/pi-tui": "^0.83.0",
++ 				"@silvia-odwyer/photon-node": "0.3.4",
++ 				"chalk": "5.6.2",
++ 				"cross-spawn": "7.0.6",
++ 				"diff": "8.0.4",
++ 				"glob": "13.0.6",
++ 				"highlight.js": "10.7.3",
++ 				"hosted-git-info": "9.0.3",
++ 				"ignore": "7.0.5",
++ 				"jiti": "2.7.0",
++ 				"minimatch": "10.2.5",
++ 				"proper-lockfile": "4.1.2",
++ 				"semver": "7.8.0",
++ 				"typebox": "1.3.7",
++ 				"undici": "8.5.0",
++ 				"yaml": "2.9.0"
++ 			},
++ 			"optionalDependencies": {
++ 				"@mariozechner/clipboard": "0.3.9"
++ 			},
++ 			"bin": {
++ 				"pi": "dist/cli.js"
++ 			},
++ 			"engines": {
++ 				"node": ">=22.19.0"
++ 			}
++ 		},
++ 		"node_modules/@earendil-works/pi-protocol": {
++ 			"version": "0.83.0",
++ 			"resolved": "https://registry.npmjs.org/@earendil-works/pi-protocol/-/pi-protocol-0.83.0.tgz",
++ 			"license": "MIT",
++ 			"dependencies": {
++ 				"typebox": "1.3.7"
++ 			},
++ 			"engines": {
++ 				"node": ">=22.19.0"
++ 			}
++ 		},
+++>>>>>>> upstream/main
+  		"node_modules/@earendil-works/pi-tui": {
+  			"version": "0.83.0",
+  			"resolved": "https://registry.npmjs.org/@earendil-works/pi-tui/-/pi-tui-0.83.0.tgz",
+diff --cc packages/coding-agent/src/modes/interactive/components/assistant-message.ts
+index ba56be92f,3f00394be..000000000
+--- a/packages/coding-agent/src/modes/interactive/components/assistant-message.ts
++++ b/packages/coding-agent/src/modes/interactive/components/assistant-message.ts
+@@@ -1,9 -1,8 +1,16 @@@
+  import type { AssistantMessage } from "@earendil-works/pi-ai";
+++<<<<<<< HEAD
+ +import { type Component, Container, Markdown, type MarkdownTheme, Spacer, Text } from "@earendil-works/pi-tui";
+ +import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+ +import { getMarkdownTheme, theme } from "../theme/theme.ts";
+ +import { createMarkdownTransform } from "./markdown-transform.ts";
+ +import { MessageMarkerComponent } from "./message-marker.ts";
+++=======
++ import { Container, Markdown, type MarkdownTheme, Spacer, Text } from "@earendil-works/pi-tui";
++ import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
++ import { getMarkdownTheme, theme } from "../theme/theme.ts";
++ import { createMarkdownTransform } from "./markdown-transform.ts";
+++>>>>>>> upstream/main
+  
+  const OSC133_ZONE_START = "\x1b]133;A\x07";
+  const OSC133_ZONE_END = "\x1b]133;B\x07";
+@@@ -43,8 -19,8 +50,9 @@@ export class AssistantMessageComponent 
+  	private outputPad: number;
+  	private markdownTransformers: readonly MarkdownTransformer[];
+  	private lastMessage?: AssistantMessage;
+ +	private isStreaming = false;
+  	private hasToolCalls = false;
++ 	private isStreaming = false;
+  
+  	constructor(
+  		message?: AssistantMessage,
+@@@ -133,18 -107,11 +141,26 @@@
+  			if (content.type === "text" && content.text.trim()) {
+  				// Assistant text messages with no background - trim the text
+  				// Set paddingY=0 to avoid extra spacing before tool executions
+++<<<<<<< HEAD
+ +				const markdown = new Markdown(
+ +					content.text.trim(),
+ +					hasResponseMarker ? this.outputPad : 0,
+ +					0,
+ +					this.markdownTheme,
+ +					undefined,
+ +					{ transform: createMarkdownTransform("assistant", this.isStreaming, this.markdownTransformers) },
+ +				);
+ +				this.contentContainer.addChild(
+ +					hasResponseMarker ? markdown : new AssistantResponseComponent(markdown, this.outputPad),
+ +				);
+ +				hasResponseMarker = true;
+++=======
++ 				this.contentContainer.addChild(
++ 					new Markdown(content.text.trim(), this.outputPad, 0, this.markdownTheme, undefined, {
++ 						transform: createMarkdownTransform("assistant", this.isStreaming, this.markdownTransformers),
++ 					}),
++ 				);
+++>>>>>>> upstream/main
+  			} else if (content.type === "thinking") {
+  				const thinkingBlocks: string[] = [];
+  				for (; i < message.content.length; i++) {
+@@@ -182,26 -144,22 +198,45 @@@
+  				} else {
+  					// Render each run of thinking blocks as one Markdown section.
+  					this.contentContainer.addChild(
+++<<<<<<< HEAD
+ +						new MessageMarkerComponent(
+ +							new Markdown(
+ +								thinkingBlocks.join("\n\n"),
+ +								0,
+ +								0,
+ +								this.markdownTheme,
+ +								{
+ +									color: (text: string) => theme.fg("thinkingText", text),
+ +									italic: true,
+ +								},
+ +								{
+ +									transform: createMarkdownTransform(
+ +										"assistant-thinking",
+ +										this.isStreaming,
+ +										this.markdownTransformers,
+ +									),
+ +								},
+ +							),
+ +							thinkingMarker,
+ +							this.outputPad,
+++=======
++ 						new Markdown(
++ 							thinkingBlocks.join("\n\n"),
++ 							this.outputPad,
++ 							0,
++ 							this.markdownTheme,
++ 							{
++ 								color: (text: string) => theme.fg("thinkingText", text),
++ 								italic: true,
++ 							},
++ 							{
++ 								transform: createMarkdownTransform(
++ 									"assistant-thinking",
++ 									this.isStreaming,
++ 									this.markdownTransformers,
++ 								),
++ 							},
+++>>>>>>> upstream/main
+  						),
+  					);
+  				}
+diff --cc packages/coding-agent/src/modes/interactive/components/user-message.ts
+index f74ddda46,009389dfc..000000000
+--- a/packages/coding-agent/src/modes/interactive/components/user-message.ts
++++ b/packages/coding-agent/src/modes/interactive/components/user-message.ts
+@@@ -2,7 -2,6 +2,10 @@@ import { Box, Container, Markdown, typ
+  import type { MarkdownTransformer } from "../../../core/extensions/types.ts";
+  import { getMarkdownTheme, theme } from "../theme/theme.ts";
+  import { createMarkdownTransform } from "./markdown-transform.ts";
+++<<<<<<< HEAD
+ +import { MessageMarkerComponent } from "./message-marker.ts";
+++=======
+++>>>>>>> upstream/main
+  
+  const OSC133_ZONE_START = "\x1b]133;A\x07";
+  const OSC133_ZONE_END = "\x1b]133;B\x07";
+@@@ -38,22 -37,23 +41,41 @@@ export class UserMessageComponent exten
+  
+  	private rebuild(): void {
+  		this.clear();
+++<<<<<<< HEAD
+ +		const contentBox = new Box(0, 0, (content: string) => theme.bg("userMessageBg", content));
+ +		const markdown = new Markdown(
+ +			this.text,
+ +			0,
+ +			0,
+ +			this.markdownTheme,
+ +			{
+ +				color: (content: string) => theme.fg("userMessageText", content),
+ +			},
+ +			{
+ +				preserveOrderedListMarkers: true,
+ +				preserveBackslashEscapes: true,
+ +				transform: createMarkdownTransform("user", false, this.markdownTransformers),
+ +			},
+++=======
++ 		const contentBox = new Box(this.outputPad, 1, (content: string) => theme.bg("userMessageBg", content));
++ 		contentBox.addChild(
++ 			new Markdown(
++ 				this.text,
++ 				0,
++ 				0,
++ 				this.markdownTheme,
++ 				{
++ 					color: (content: string) => theme.fg("userMessageText", content),
++ 				},
++ 				{
++ 					preserveOrderedListMarkers: true,
++ 					preserveBackslashEscapes: true,
++ 					transform: createMarkdownTransform("user", false, this.markdownTransformers),
++ 				},
++ 			),
+++>>>>>>> upstream/main
+  		);
+ +		contentBox.addChild(new MessageMarkerComponent(markdown, theme.fg("userMessageText", "❯"), this.outputPad));
+  		this.addChild(contentBox);
+  	}
+  
+diff --cc packages/coding-agent/src/modes/interactive/interactive-mode.ts
+index 7da2676a6,dd740010c..000000000
+--- a/packages/coding-agent/src/modes/interactive/interactive-mode.ts
++++ b/packages/coding-agent/src/modes/interactive/interactive-mode.ts
+@@@ -342,10 -339,10 +344,15 @@@ interface InteractiveTuiOptions 
+  /** Composition root for selecting the interactive terminal renderer. */
+  export function createInteractiveTui(options: InteractiveTuiOptions): TUI {
+  	const terminal = options.terminal ?? new ProcessTerminal();
+++<<<<<<< HEAD
+ +	if (options.alt) {
+ +		return createAltScreenTui(terminal, options.showHardwareCursor, options.logDirectory, { openUrl: openBrowser });
+++=======
++ 	if (options.uiMode === "fullscreen") {
++ 		return new TuiAltScreen(terminal, options.showHardwareCursor, options.logDirectory, { openUrl: openBrowser });
+++>>>>>>> upstream/main
+  	}
+ -	return new TuiMainScreen(terminal, options.showHardwareCursor, options.logDirectory);
+ +	return createMainScreenTui(terminal, options.showHardwareCursor, options.logDirectory);
+  }
+  
+  export class InteractiveMode {
+diff --cc packages/coding-agent/src/modes/interactive/theme/theme-schema.json
+index d1b173c85,039bdc15f..000000000
+--- a/packages/coding-agent/src/modes/interactive/theme/theme-schema.json
++++ b/packages/coding-agent/src/modes/interactive/theme/theme-schema.json
+@@@ -34,7 -34,7 +34,11 @@@
+  		},
+  		"colors": {
+  			"type": "object",
+++<<<<<<< HEAD
+ +			"description": "Theme color definitions (assistantMarker, thinkingMax, toolRunning, toolSuccess, and toolError are optional and use compatible fallbacks)",
+++=======
++ 			"description": "Theme color definitions (thinkingMax and scrollbarThumb are optional and use compatible fallbacks)",
+++>>>>>>> upstream/main
+  			"required": [
+  				"accent",
+  				"border",
+diff --cc packages/coding-agent/src/modes/interactive/theme/theme.ts
+index 86557dcc9,b38678629..000000000
+--- a/packages/coding-agent/src/modes/interactive/theme/theme.ts
++++ b/packages/coding-agent/src/modes/interactive/theme/theme.ts
+@@@ -45,9 -45,9 +45,14 @@@ const ThemeJsonSchema = Type.Object(
+  		dim: ColorValueSchema,
+  		text: ColorValueSchema,
+  		thinkingText: ColorValueSchema,
+++<<<<<<< HEAD
+ +		assistantMarker: Type.Optional(ColorValueSchema),
+ +		// Backgrounds & Content Text (11 required, 3 optional)
+++=======
++ 		// Backgrounds & Content Text (11 required, 1 optional)
+++>>>>>>> upstream/main
+  		selectedBg: ColorValueSchema,
++ 		scrollbarThumb: Type.Optional(ColorValueSchema),
+  		userMessageBg: ColorValueSchema,
+  		userMessageText: ColorValueSchema,
+  		customMessageBg: ColorValueSchema,
+@@@ -327,20 -321,13 +333,30 @@@ function resolveThemeColors<T extends R
+  	return resolved as Record<keyof T, string | number>;
+  }
+  
+++<<<<<<< HEAD
+ +function withThemeColorFallbacks(colors: ThemeJson["colors"]): ThemeJson["colors"] & {
+ +	assistantMarker: ColorValue;
+ +	thinkingMax: ColorValue;
+ +	toolRunning: ColorValue;
+ +	toolSuccess: ColorValue;
+ +	toolError: ColorValue;
+ +} {
+ +	return {
+ +		...colors,
+ +		assistantMarker: colors.assistantMarker ?? colors.text,
+ +		thinkingMax: colors.thinkingMax ?? colors.thinkingXhigh,
+ +		toolRunning: colors.toolRunning ?? colors.warning,
+ +		toolSuccess: colors.toolSuccess ?? colors.success,
+ +		toolError: colors.toolError ?? colors.error,
+++=======
++ function withThemeColorFallbacks(
++ 	colors: ThemeJson["colors"],
++ ): ThemeJson["colors"] & { thinkingMax: ColorValue; scrollbarThumb: ColorValue } {
++ 	return {
++ 		...colors,
++ 		thinkingMax: colors.thinkingMax ?? colors.thinkingXhigh,
++ 		scrollbarThumb: colors.scrollbarThumb ?? colors.selectedBg,
+++>>>>>>> upstream/main
+  	};
+  }
+  
+@@@ -361,8 -344,9 +377,14 @@@ export class Theme 
+  	private mode: ColorMode;
+  
+  	constructor(
+++<<<<<<< HEAD
+ +		fgColors: ThemeForegroundColors,
+ +		bgColors: Record<ThemeBg, string | number>,
+++=======
++ 		fgColors: Record<ThemeColor, string | number>,
++ 		bgColors: Record<Exclude<ThemeBg, "scrollbarThumb">, string | number> &
++ 			Partial<Record<"scrollbarThumb", string | number>>,
+++>>>>>>> upstream/main
+  		mode: ColorMode,
+  		options: { name?: string; sourcePath?: string; sourceInfo?: SourceInfo } = {},
+  	) {
+diff --cc packages/server/package.json
+index edf575b37,a619eec3c..000000000
+--- a/packages/server/package.json
++++ b/packages/server/package.json
+@@@ -40,9 -54,12 +54,16 @@@
+  		"node": ">=22.19.0"
+  	},
+  	"dependencies": {
+++<<<<<<< HEAD
+ +		"@doubleflower/pi-claude": "^0.83.3"
+++=======
++ 		"@earendil-works/pi-ai": "^0.83.0",
++ 		"@earendil-works/pi-coding-agent": "^0.83.0",
++ 		"@earendil-works/pi-protocol": "^0.83.0"
+++>>>>>>> upstream/main
+  	},
+  	"devDependencies": {
+- 		"shx": "0.4.0"
++ 		"shx": "0.4.0",
++ 		"vitest": "4.1.9"
+  	}
+  }
+diff --cc tsconfig.json
+index e3f5a1b3c,a409cdf11..000000000
+--- a/tsconfig.json
++++ b/tsconfig.json
+@@@ -13,9 -13,13 +13,19 @@@
+  			"@earendil-works/pi-agent-core": ["./packages/agent/src/index.ts"],
+  			"@earendil-works/pi-agent-core/*": ["./packages/agent/src/*"],
+  			"@earendil-works/pi-agent-sqlite-node": ["./packages/storage/sqlite-node/src/index.ts"],
+++<<<<<<< HEAD
+ +			"@doubleflower/pi-claude": ["./packages/coding-agent/src/index.ts"],
+ +			"@doubleflower/pi-claude/hooks": ["./packages/coding-agent/src/core/hooks/index.ts"],
+ +			"@doubleflower/pi-claude/*": ["./packages/coding-agent/src/*"],
+++=======
++ 			"@earendil-works/pi-coding-agent": ["./packages/coding-agent/src/index.ts"],
++ 			"@earendil-works/pi-coding-agent/hooks": ["./packages/coding-agent/src/core/hooks/index.ts"],
++ 			"@earendil-works/pi-coding-agent/*": ["./packages/coding-agent/src/*"],
++ 			"@earendil-works/pi-protocol": ["./packages/protocol/src/index.ts"],
++ 			"@earendil-works/pi-protocol/*": ["./packages/protocol/src/*"],
++ 			"@earendil-works/pi-client": ["./packages/client/src/index.ts"],
++ 			"@earendil-works/pi-client/*": ["./packages/client/src/*"],
+++>>>>>>> upstream/main
+  			"@earendil-works/pi-server": ["./packages/server/src/index.ts"],
+  			"@earendil-works/pi-server/*": ["./packages/server/src/*"],
+  			"typebox": ["./node_modules/typebox"],
+diff --git a/.upstream-sync-status.txt b/.upstream-sync-status.txt
+index a8c6186a3..4b1431c98 100644
+--- a/.upstream-sync-status.txt
++++ b/.upstream-sync-status.txt
+@@ -1,4 +1,4 @@
+ base=c13ffe1877c3a47ce9f2fc98d9880447d64a0e87
+-local=70a84dbc14bc59f7c4bc973d6b1f957b93055767
++local=1b8ee103b1ff3008aa7797d94ccce84ea32b4ba3
+ upstream=4c01c709380621c5ff2719162cd7a7973dcb2799
+ merge_status=1
