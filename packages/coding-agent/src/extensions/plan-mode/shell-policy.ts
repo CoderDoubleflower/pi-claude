@@ -54,6 +54,26 @@ const GIT_READ_SUBCOMMANDS = new Set([
 	"shortlog",
 ]);
 
+const GIT_EXECUTION_OPTIONS = ["--ext-diff", "--textconv", "--filters", "--open-files-in-pager"] as const;
+const GIT_BRANCH_MUTATION_OPTIONS = [
+	"--delete",
+	"--move",
+	"--copy",
+	"--edit-description",
+	"--set-upstream-to",
+	"--unset-upstream",
+	"--create-reflog",
+] as const;
+const GIT_CONFIG_MUTATION_OPTIONS = [
+	"--add",
+	"--replace-all",
+	"--unset",
+	"--unset-all",
+	"--rename-section",
+	"--remove-section",
+	"--edit",
+] as const;
+const GIT_CONFIG_READ_OPTIONS = ["--get", "--get-all", "--get-regexp", "--list"] as const;
 const PACKAGE_READ_SUBCOMMANDS = new Set(["list", "ls", "view", "info", "search", "outdated", "audit", "why"]);
 
 function tokenize(command: string): string[] | null {
@@ -146,17 +166,27 @@ function checkShellSyntax(command: string): PlanShellDecision | undefined {
 	return escaped || quote ? unsafe("command could not be parsed safely") : undefined;
 }
 
+function isLongOption(token: string, option: string): boolean {
+	if (!token.startsWith("--")) return false;
+	const name = token.split("=", 1)[0];
+	return name === option || (name.length > 2 && option.startsWith(name));
+}
+
+function hasLongOption(tokens: readonly string[], option: string): boolean {
+	return tokens.some((token) => isLongOption(token, option));
+}
+
+function hasAnyLongOption(tokens: readonly string[], options: readonly string[]): boolean {
+	return options.some((option) => hasLongOption(tokens, option));
+}
+
 function hasOption(tokens: readonly string[], short: string, long?: string): boolean {
 	return tokens.some(
 		(token) =>
 			token === short ||
-			(long !== undefined && (token === long || token.startsWith(`${long}=`))) ||
+			(long !== undefined && isLongOption(token, long)) ||
 			(short.length === 2 && token.startsWith(short) && token.length > 2),
 	);
-}
-
-function hasLongOption(tokens: readonly string[], option: string): boolean {
-	return tokens.some((token) => token === option || token.startsWith(`${option}=`));
 }
 
 function checkSimpleReadCommand(executable: string, tokens: string[]): PlanShellDecision {
@@ -168,9 +198,12 @@ function checkSimpleReadCommand(executable: string, tokens: string[]): PlanShell
 				: { safe: true };
 		case "diff":
 		case "tree":
-		case "less":
-			return hasOption(args, "-o", "--output") || (executable === "less" && hasOption(args, "-O"))
+			return hasOption(args, "-o", "--output")
 				? unsafe(`${executable} output-file options are not allowed`)
+				: { safe: true };
+		case "less":
+			return hasOption(args, "-o", "--log-file") || hasOption(args, "-O")
+				? unsafe("less log-file options are not allowed")
 				: { safe: true };
 		case "uniq": {
 			const positionals = args.filter((token) => !token.startsWith("-"));
@@ -187,10 +220,8 @@ function checkSimpleReadCommand(executable: string, tokens: string[]): PlanShell
 					token === "-X" ||
 					(token.startsWith("-x") && token.length > 2) ||
 					(token.startsWith("-X") && token.length > 2) ||
-					token === "--exec" ||
-					token.startsWith("--exec=") ||
-					token === "--exec-batch" ||
-					token.startsWith("--exec-batch="),
+					isLongOption(token, "--exec") ||
+					isLongOption(token, "--exec-batch"),
 			)
 				? unsafe("fd command execution is not allowed")
 				: { safe: true };
@@ -201,8 +232,8 @@ function checkSimpleReadCommand(executable: string, tokens: string[]): PlanShell
 		case "date":
 			return hasOption(args, "-s", "--set") ? unsafe("date may not change the system clock") : { safe: true };
 		case "bat":
-			return hasLongOption(args, "--pager")
-				? unsafe("bat custom pagers may execute arbitrary commands")
+			return hasLongOption(args, "--pager") || hasLongOption(args, "--generate-config-file")
+				? unsafe("bat pager and config-generation options are not allowed")
 				: { safe: true };
 		default:
 			return { safe: true };
@@ -210,19 +241,25 @@ function checkSimpleReadCommand(executable: string, tokens: string[]): PlanShell
 }
 
 function checkGit(tokens: string[]): PlanShellDecision {
-	if (tokens.some((token) => token === "--output" || token.startsWith("--output="))) {
+	const args = tokens.slice(1);
+	if (hasLongOption(args, "--output")) {
 		return unsafe("git output-file options are not allowed in plan mode");
 	}
+	if (hasAnyLongOption(args, GIT_EXECUTION_OPTIONS) || args.some((token) => token === "-O" || token.startsWith("-O"))) {
+		return unsafe("git options that invoke external helpers are not allowed in plan mode");
+	}
+
 	const subcommand = tokens[1];
 	if (!subcommand) return unsafe("git requires an explicitly read-only subcommand");
 	if (GIT_READ_SUBCOMMANDS.has(subcommand)) return { safe: true };
 
 	if (subcommand === "branch") {
-		const args = tokens.slice(2);
-		const mutationFlag = args.some(
-			(arg) => /^-(?:d|D|m|M|c|C)/.test(arg) || arg === "--delete" || arg.startsWith("--delete="),
-		);
-		const positional = args.filter((arg) => !arg.startsWith("-"));
+		const branchArgs = tokens.slice(2);
+		const mutationFlag =
+			branchArgs.some(
+				(arg) => /^-(?:d|D|m|M|c|C)/.test(arg) || arg === "-u" || (arg.startsWith("-u") && arg.length > 2),
+			) || hasAnyLongOption(branchArgs, GIT_BRANCH_MUTATION_OPTIONS);
+		const positional = branchArgs.filter((arg) => !arg.startsWith("-"));
 		return mutationFlag || positional.length > 0
 			? unsafe("git branch mutation is not allowed in plan mode")
 			: { safe: true };
@@ -236,8 +273,12 @@ function checkGit(tokens: string[]): PlanShellDecision {
 	}
 
 	if (subcommand === "config") {
-		const args = tokens.slice(2);
-		return args.some((arg) => ["--get", "--get-all", "--get-regexp", "--list", "-l"].includes(arg))
+		const configArgs = tokens.slice(2);
+		const mutationFlag =
+			configArgs.includes("-e") ||
+			hasAnyLongOption(configArgs, GIT_CONFIG_MUTATION_OPTIONS);
+		const hasReadAction = configArgs.includes("-l") || hasAnyLongOption(configArgs, GIT_CONFIG_READ_OPTIONS);
+		return hasReadAction && !mutationFlag
 			? { safe: true }
 			: unsafe("git config is allowed only for reads");
 	}
