@@ -1,4 +1,4 @@
-# Trigger semantic merge run (attempt 2).
+# Trigger semantic merge run (attempt 3).
 # This temporary workflow is removed by the resolver.
 name: Discover upstream merge conflicts
 
