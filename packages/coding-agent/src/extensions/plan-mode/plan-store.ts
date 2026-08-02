@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, normalize, resolve, sep } from "node:path";
 import { getAgentDir } from "../../config.ts";
 
@@ -117,19 +117,7 @@ function replaceFile(temporaryPath: string, destinationPath: string): void {
 		if (!windowsReplaceFailure) throw error;
 	}
 
-	const backupPath = `${temporaryPath}.previous`;
-	renameSync(destinationPath, backupPath);
-	try {
-		renameSync(temporaryPath, destinationPath);
-		cleanupTemporaryFile(backupPath);
-	} catch (error) {
-		if (!existsSync(destinationPath) && existsSync(backupPath)) {
-			renameSync(backupPath, destinationPath);
-		}
-		throw error;
-	} finally {
-		cleanupTemporaryFile(backupPath);
-	}
+	copyFileSync(temporaryPath, destinationPath);
 }
 
 export function writePlanFile(planPath: string, content: string): void {
