@@ -1,9 +1,9 @@
 name: Plan mode targeted validation
 
 on:
-  push:
+  pull_request:
     branches:
-      - feat/claude-plan-mode
+      - main
 
 permissions:
   contents: write
