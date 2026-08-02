@@ -1011,13 +1011,97 @@ index e3f5a1b3c,a409cdf11..000000000
   			"@earendil-works/pi-server": ["./packages/server/src/index.ts"],
   			"@earendil-works/pi-server/*": ["./packages/server/src/*"],
   			"typebox": ["./node_modules/typebox"],
+diff --git a/.upstream-sync-conflicts.diff b/.upstream-sync-conflicts.diff
+index 248e1c07c..cafa9b5fd 100644
+--- a/.upstream-sync-conflicts.diff
++++ b/.upstream-sync-conflicts.diff
+@@ -947,77 +947,4 @@ index 86557dcc9,b38678629..000000000
+ + 		thinkingMax: colors.thinkingMax ?? colors.thinkingXhigh,
+ + 		scrollbarThumb: colors.scrollbarThumb ?? colors.selectedBg,
+ ++>>>>>>> upstream/main
+-  	};
+-  }
+-  
+-@@@ -361,8 -344,9 +377,14 @@@ export class Theme 
+-  	private mode: ColorMode;
+-  
+-  	constructor(
+-++<<<<<<< HEAD
+- +		fgColors: ThemeForegroundColors,
+- +		bgColors: Record<ThemeBg, string | number>,
+-++=======
+-+ 		fgColors: Record<ThemeColor, string | number>,
+-+ 		bgColors: Record<Exclude<ThemeBg, "scrollbarThumb">, string | number> &
+-+ 			Partial<Record<"scrollbarThumb", string | number>>,
+-++>>>>>>> upstream/main
+-  		mode: ColorMode,
+-  		options: { name?: string; sourcePath?: string; sourceInfo?: SourceInfo } = {},
+-  	) {
+-diff --cc packages/server/package.json
+-index edf575b37,a619eec3c..000000000
+---- a/packages/server/package.json
+-+++ b/packages/server/package.json
+-@@@ -40,9 -54,12 +54,16 @@@
+-  		"node": ">=22.19.0"
+-  	},
+-  	"dependencies": {
+-++<<<<<<< HEAD
+- +		"@doubleflower/pi-claude": "^0.83.3"
+-++=======
+-+ 		"@earendil-works/pi-ai": "^0.83.0",
+-+ 		"@earendil-works/pi-coding-agent": "^0.83.0",
+-+ 		"@earendil-works/pi-protocol": "^0.83.0"
+-++>>>>>>> upstream/main
+-  	},
+-  	"devDependencies": {
+-- 		"shx": "0.4.0"
+-+ 		"shx": "0.4.0",
+-+ 		"vitest": "4.1.9"
+-  	}
+-  }
+-diff --cc tsconfig.json
+-index e3f5a1b3c,a409cdf11..000000000
+---- a/tsconfig.json
+-+++ b/tsconfig.json
+-@@@ -13,9 -13,13 +13,19 @@@
+-  			"@earendil-works/pi-agent-core": ["./packages/agent/src/index.ts"],
+-  			"@earendil-works/pi-agent-core/*": ["./packages/agent/src/*"],
+-  			"@earendil-works/pi-agent-sqlite-node": ["./packages/storage/sqlite-node/src/index.ts"],
+-++<<<<<<< HEAD
+- +			"@doubleflower/pi-claude": ["./packages/coding-agent/src/index.ts"],
+- +			"@doubleflower/pi-claude/hooks": ["./packages/coding-agent/src/core/hooks/index.ts"],
+- +			"@doubleflower/pi-claude/*": ["./packages/coding-agent/src/*"],
+-++=======
+-+ 			"@earendil-works/pi-coding-agent": ["./packages/coding-agent/src/index.ts"],
+-+ 			"@earendil-works/pi-coding-agent/hooks": ["./packages/coding-agent/src/core/hooks/index.ts"],
+-+ 			"@earendil-works/pi-coding-agent/*": ["./packages/coding-agent/src/*"],
+-+ 			"@earendil-works/pi-protocol": ["./packages/protocol/src/index.ts"],
+-+ 			"@earendil-works/pi-protocol/*": ["./packages/protocol/src/*"],
+-+ 			"@earendil-works/pi-client": ["./packages/client/src/index.ts"],
+-+ 			"@earendil-works/pi-client/*": ["./packages/client/src/*"],
+-++>>>>>>> upstream/main
+-  			"@earendil-works/pi-server": ["./packages/server/src/index.ts"],
+-  			"@earendil-works/pi-server/*": ["./packages/server/src/*"],
+-  			"typebox": ["./node_modules/typebox"],
+-diff --git a/.upstream-sync-status.txt b/.upstream-sync-status.txt
+-index a8c6186a3..4b1431c98 100644
+---- a/.upstream-sync-status.txt
+-+++ b/.upstream-sync-status.txt
+-@@ -1,4 +1,4 @@
+- base=c13ffe1877c3a47ce9f2fc98d9880447d64a0e87
+--local=70a84dbc14bc59f7c4bc973d6b1f957b93055767
+-+local=1b8ee103b1ff3008aa7797d94ccce84ea32b4ba3
+- upstream=4c01c709380621c5ff2719162cd7a7973dcb2799
+- merge_status=1
++  
+\ No newline at end of file
 diff --git a/.upstream-sync-status.txt b/.upstream-sync-status.txt
-index a8c6186a3..4b1431c98 100644
+index 4b1431c98..c6a5266bd 100644
 --- a/.upstream-sync-status.txt
 +++ b/.upstream-sync-status.txt
 @@ -1,4 +1,4 @@
  base=c13ffe1877c3a47ce9f2fc98d9880447d64a0e87
--local=70a84dbc14bc59f7c4bc973d6b1f957b93055767
-+local=1b8ee103b1ff3008aa7797d94ccce84ea32b4ba3
+-local=1b8ee103b1ff3008aa7797d94ccce84ea32b4ba3
++local=f1cf43571f35ea7ce348ab42a11b8a2914c703d4
  upstream=4c01c709380621c5ff2719162cd7a7973dcb2799
  merge_status=1
