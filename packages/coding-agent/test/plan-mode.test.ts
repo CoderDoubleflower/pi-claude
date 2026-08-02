@@ -153,7 +153,7 @@ describe("Claude-style plan mode", () => {
 		"find . -delete",
 		"find . -exec touch {} ;",
 		"find . $'-exec' touch {} +",
-		"find . ${PLAN_PRIMARY} touch {} +",
+		"find . $" + "{PLAN_PRIMARY} touch {} +",
 		"find . -{ex,}ec touch {} +",
 		"find . -*",
 		"find . @(-exec)",
