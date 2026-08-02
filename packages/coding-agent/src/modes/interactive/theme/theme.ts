@@ -46,8 +46,9 @@ const ThemeJsonSchema = Type.Object({
 		text: ColorValueSchema,
 		thinkingText: ColorValueSchema,
 		assistantMarker: Type.Optional(ColorValueSchema),
-		// Backgrounds & Content Text (11 required, 3 optional)
+		// Backgrounds & Content Text (11 required, 4 optional)
 		selectedBg: ColorValueSchema,
+		scrollbarThumb: Type.Optional(ColorValueSchema),
 		userMessageBg: ColorValueSchema,
 		userMessageText: ColorValueSchema,
 		customMessageBg: ColorValueSchema,
@@ -164,6 +165,7 @@ export type ThemeColor =
 
 export type ThemeBg =
 	| "selectedBg"
+	| "scrollbarThumb"
 	| "userMessageBg"
 	| "customMessageBg"
 	| "toolPendingBg"
@@ -333,6 +335,7 @@ function withThemeColorFallbacks(colors: ThemeJson["colors"]): ThemeJson["colors
 	toolRunning: ColorValue;
 	toolSuccess: ColorValue;
 	toolError: ColorValue;
+	scrollbarThumb: ColorValue;
 } {
 	return {
 		...colors,
@@ -341,6 +344,7 @@ function withThemeColorFallbacks(colors: ThemeJson["colors"]): ThemeJson["colors
 		toolRunning: colors.toolRunning ?? colors.warning,
 		toolSuccess: colors.toolSuccess ?? colors.success,
 		toolError: colors.toolError ?? colors.error,
+		scrollbarThumb: colors.scrollbarThumb ?? colors.selectedBg,
 	};
 }
 
@@ -362,7 +366,8 @@ export class Theme {
 
 	constructor(
 		fgColors: ThemeForegroundColors,
-		bgColors: Record<ThemeBg, string | number>,
+		bgColors: Record<Exclude<ThemeBg, "scrollbarThumb">, string | number> &
+			Partial<Record<"scrollbarThumb", string | number>>,
 		mode: ColorMode,
 		options: { name?: string; sourcePath?: string; sourceInfo?: SourceInfo } = {},
 	) {
@@ -383,7 +388,11 @@ export class Theme {
 			this.fgColors.set(key, fgAnsi(value, mode));
 		}
 		this.bgColors = new Map();
-		for (const [key, value] of Object.entries(bgColors) as [ThemeBg, string | number][]) {
+		const backgrounds = {
+			...bgColors,
+			scrollbarThumb: bgColors.scrollbarThumb ?? bgColors.selectedBg,
+		};
+		for (const [key, value] of Object.entries(backgrounds) as [ThemeBg, string | number][]) {
 			this.bgColors.set(key, bgAnsi(value, mode));
 		}
 	}
@@ -633,6 +642,7 @@ function createTheme(themeJson: ThemeJson, mode?: ColorMode, sourcePath?: string
 	const bgColors: Record<ThemeBg, string | number> = {} as Record<ThemeBg, string | number>;
 	const bgColorKeys: Set<string> = new Set([
 		"selectedBg",
+		"scrollbarThumb",
 		"userMessageBg",
 		"customMessageBg",
 		"toolPendingBg",
