@@ -39,7 +39,17 @@ jobs:
           git remote add upstream https://github.com/earendil-works/pi.git || true
           git fetch upstream main
           git merge --no-commit --no-ff upstream/main || true
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/resolve-upstream-sync.py')
+          text = path.read_text()
+          marker = 'for file in Path(".").rglob("*"):'
+          if marker in text:
+              text = text[:text.index(marker)]
+          path.write_text(text)
+          PY
           python3 .github/scripts/resolve-upstream-sync.py
+          test -z "$(git ls-files -u)"
 
       - name: Regenerate dependency locks
         shell: bash
