@@ -4,7 +4,7 @@ on:
   pull_request:
     branches:
       - main
-    types: [reopened]
+    types: [synchronize, reopened]
 
 permissions:
   contents: write
