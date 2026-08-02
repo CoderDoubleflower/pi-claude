@@ -47,6 +47,7 @@ jobs:
 
           if [ "$merge_status" -ne 0 ]; then
             git diff --name-only --diff-filter=U | sort > /tmp/conflicts.txt
+            git diff --cc > .upstream-sync-conflicts.diff
             {
               echo "# Upstream merge conflicts"
               echo
@@ -64,12 +65,13 @@ jobs:
             } > .upstream-sync-conflicts.md
             git merge --abort
           else
+            : > .upstream-sync-conflicts.diff
             echo "# Upstream merge conflicts" > .upstream-sync-conflicts.md
             echo >> .upstream-sync-conflicts.md
             echo "No textual conflicts." >> .upstream-sync-conflicts.md
             git commit -m "Merge upstream earendil-works/pi"
           fi
 
-          git add .upstream-sync-status.txt .upstream-sync-conflicts.md
+          git add .upstream-sync-status.txt .upstream-sync-conflicts.md .upstream-sync-conflicts.diff
           git commit -m "chore: record upstream merge analysis" || true
           git push origin HEAD:automation/upstream-sync-20260803
