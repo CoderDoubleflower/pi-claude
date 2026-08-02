@@ -54,7 +54,7 @@ function hashString(value: string): number {
 }
 
 export function getPlansDirectory(agentDir = getAgentDir()): string {
-	const directory = join(agentDir, "plans");
+	const directory = join(dirname(agentDir), "plans");
 	mkdirSync(directory, { recursive: true });
 	return directory;
 }
