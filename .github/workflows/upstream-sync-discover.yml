@@ -1,4 +1,5 @@
-# Trigger conflict hunk capture.
+# Trigger semantic merge run.
+# This temporary workflow is removed by the resolver.
 name: Discover upstream merge conflicts
 
 on:
