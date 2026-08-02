@@ -81,6 +81,12 @@ const AskUserQuestionSchema = Type.Object({
 });
 const EmptySchema = Type.Object({});
 const ExitPlanModeSchema = Type.Object({
+	plan: Type.Optional(
+		Type.String({
+			description:
+				"Complete Markdown plan to save to the current plan file when normal edit/write tools are unavailable",
+		}),
+	),
 	allowedPrompts: Type.Optional(
 		Type.Array(
 			Type.Object({
@@ -433,7 +439,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		parameters: ExitPlanModeSchema,
 		renderShell: "self",
 		executionMode: "sequential",
-		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+		async execute(_toolCallId, { plan: submittedPlan }, _signal, _onUpdate, ctx) {
 			if (state.phase !== "planning") {
 				return textResult(
 					"ExitPlanMode can only be used while plan mode is active.",
@@ -442,10 +448,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				);
 			}
 			ensurePlanIdentity(ctx);
+			if (submittedPlan?.trim()) writePlanFile(state.planPath!, submittedPlan);
 			let plan = readPlanFile(state.planPath);
 			if (!plan?.trim()) {
 				return textResult(
-					`No plan was found at ${state.planPath}. Write a complete plan to that file before calling ExitPlanMode.`,
+					`No plan was found at ${state.planPath}. Write a complete plan to that file or pass it in ExitPlanMode's plan argument before requesting approval.`,
 					{ kind: "cancelled", title: "Plan file is empty", planPath: state.planPath },
 					true,
 				);
