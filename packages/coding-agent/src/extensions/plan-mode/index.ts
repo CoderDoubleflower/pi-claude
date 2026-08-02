@@ -525,7 +525,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 	pi.registerCommand("plan", {
 		description: "Enable plan mode or view/edit the current session plan",
-		getArgumentCompletions: (prefix) => ["open"].filter((value) => value.startsWith(prefix)).map((value) => ({ value })),
+		getArgumentCompletions: (prefix) =>
+			["open"].filter((value) => value.startsWith(prefix)).map((value) => ({ value, label: value })),
 		handler: async (args, ctx) => {
 			const trimmed = args.trim();
 			if (state.phase === "inactive") {
@@ -630,12 +631,13 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	pi.on("before_agent_start", () => {
 		if (state.phase === "inactive") {
 			if (!state.needsExitReminder || !state.planPath) return;
+			const planPath = state.planPath;
 			state = { ...state, needsExitReminder: false };
 			persistState();
 			return {
 				message: {
 					customType: PLAN_MODE_REMINDER_TYPE,
-					content: buildPlanModeExitPrompt(state.planPath, readPlanFile(state.planPath)),
+					content: buildPlanModeExitPrompt(planPath, readPlanFile(planPath)),
 					display: false,
 				},
 			};
