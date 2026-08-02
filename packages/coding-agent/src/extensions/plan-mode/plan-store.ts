@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, normalize, resolve, sep } from "node:path";
 import { getAgentDir } from "../../config.ts";
@@ -53,8 +54,12 @@ function hashString(value: string): number {
 	return hash >>> 0;
 }
 
+function getPlansDirectoryPath(agentDir = getAgentDir()): string {
+	return join(dirname(agentDir), "plans");
+}
+
 export function getPlansDirectory(agentDir = getAgentDir()): string {
-	const directory = join(dirname(agentDir), "plans");
+	const directory = getPlansDirectoryPath(agentDir);
 	mkdirSync(directory, { recursive: true });
 	return directory;
 }
@@ -91,18 +96,50 @@ export function readPlanFile(planPath: string | undefined): string | null {
 	}
 }
 
+function cleanupTemporaryFile(path: string): void {
+	try {
+		if (existsSync(path)) unlinkSync(path);
+	} catch {
+		// Best-effort cleanup.
+	}
+}
+
+function replaceFile(temporaryPath: string, destinationPath: string): void {
+	try {
+		renameSync(temporaryPath, destinationPath);
+		return;
+	} catch (error) {
+		const code = (error as NodeJS.ErrnoException).code;
+		const windowsReplaceFailure =
+			process.platform === "win32" &&
+			existsSync(destinationPath) &&
+			(code === "EACCES" || code === "EEXIST" || code === "ENOTEMPTY" || code === "EPERM");
+		if (!windowsReplaceFailure) throw error;
+	}
+
+	const backupPath = `${temporaryPath}.previous`;
+	renameSync(destinationPath, backupPath);
+	try {
+		renameSync(temporaryPath, destinationPath);
+		cleanupTemporaryFile(backupPath);
+	} catch (error) {
+		if (!existsSync(destinationPath) && existsSync(backupPath)) {
+			renameSync(backupPath, destinationPath);
+		}
+		throw error;
+	} finally {
+		cleanupTemporaryFile(backupPath);
+	}
+}
+
 export function writePlanFile(planPath: string, content: string): void {
 	mkdirSync(dirname(planPath), { recursive: true });
-	const temporaryPath = join(dirname(planPath), `.${basename(planPath)}.${process.pid}.tmp`);
+	const temporaryPath = join(dirname(planPath), `.${basename(planPath)}.${process.pid}.${randomUUID()}.tmp`);
 	try {
 		writeFileSync(temporaryPath, content, { encoding: "utf-8", mode: 0o600 });
-		renameSync(temporaryPath, planPath);
+		replaceFile(temporaryPath, planPath);
 	} finally {
-		try {
-			if (existsSync(temporaryPath)) unlinkSync(temporaryPath);
-		} catch {
-			// Best-effort cleanup.
-		}
+		cleanupTemporaryFile(temporaryPath);
 	}
 }
 
@@ -128,7 +165,7 @@ export function isCurrentPlanFile(path: unknown, planPath: string | undefined, c
 }
 
 export function isPathInsidePlansDirectory(path: string, agentDir = getAgentDir()): boolean {
-	const plansDirectory = normalizeComparablePath(getPlansDirectory(agentDir));
+	const plansDirectory = normalizeComparablePath(getPlansDirectoryPath(agentDir));
 	const candidate = normalizeComparablePath(resolve(path));
 	return candidate === plansDirectory || candidate.startsWith(`${plansDirectory}${sep}`);
 }
