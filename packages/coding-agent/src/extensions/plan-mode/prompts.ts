@@ -20,11 +20,7 @@ function planFileSection(planPath: string, planExists: boolean): string {
 		: `Write the final plan to ${planPath}. This is the only file you may create or modify.`;
 }
 
-export function buildFullPlanModePrompt(options: {
-	planPath: string;
-	planExists: boolean;
-	reentry?: boolean;
-}): string {
+export function buildFullPlanModePrompt(options: { planPath: string; planExists: boolean; reentry?: boolean }): string {
 	const reentry = options.reentry
 		? `\nYou are re-entering plan mode. Review the existing plan before deciding whether to revise it or replace it.\n`
 		: "";

@@ -75,9 +75,7 @@ export function parsePlanModeState(value: unknown): PlanModeState | undefined {
 				? Math.floor(record.humanTurnsSinceReminder)
 				: 0,
 		reminderCount:
-			typeof record.reminderCount === "number" && record.reminderCount >= 0
-				? Math.floor(record.reminderCount)
-				: 0,
+			typeof record.reminderCount === "number" && record.reminderCount >= 0 ? Math.floor(record.reminderCount) : 0,
 		pendingExecution,
 	};
 }

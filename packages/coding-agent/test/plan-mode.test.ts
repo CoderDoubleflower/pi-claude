@@ -41,9 +41,7 @@ afterEach(() => {
 
 describe("Claude-style plan mode", () => {
 	it("is registered as a hidden built-in extension", () => {
-		expect(builtInExtensions).toContainEqual(
-			expect.objectContaining({ name: "plan-mode", hidden: true }),
-		);
+		expect(builtInExtensions).toContainEqual(expect.objectContaining({ name: "plan-mode", hidden: true }));
 	});
 
 	it("exposes only planning-safe tools and restores the previous tool set", () => {
@@ -142,7 +140,7 @@ describe("Claude-style plan mode", () => {
 		"cat input > output",
 		"echo $(touch output)",
 		"rg foo | tee output",
-		"python -c 'open(\"output\", \"w\").write(\"x\")'",
+		'python -c \'open("output", "w").write("x")\'',
 	])("blocks state-changing command: %s", (command) => {
 		expect(checkPlanReadOnlyCommand(command).safe).toBe(false);
 	});

@@ -1,6 +1,6 @@
-import chalk from "chalk";
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { Container, Key, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
+import chalk from "chalk";
 import { Type } from "typebox";
 import type {
 	ExtensionAPI,
@@ -172,7 +172,9 @@ export function getRestoredTools(
 ): string[] {
 	const available = new Set(availableToolNames);
 	const base = toolsBeforePlan ?? currentTools.filter((name) => !PLAN_CUSTOM_TOOL_SET.has(name));
-	return unique([...base, ENTER_PLAN_MODE_TOOL_NAME, ASK_USER_QUESTION_TOOL_NAME]).filter((name) => available.has(name));
+	return unique([...base, ENTER_PLAN_MODE_TOOL_NAME, ASK_USER_QUESTION_TOOL_NAME]).filter((name) =>
+		available.has(name),
+	);
 }
 
 function getQuestionOptionText(index: number, option: { label: string; description?: string }): string {
@@ -237,6 +239,7 @@ async function askSingleQuestion(
 
 export default function planModeExtension(pi: ExtensionAPI): void {
 	let state: PlanModeState = createDefaultPlanModeState();
+	let lastNormalTools: string[] | undefined;
 
 	pi.registerFlag("plan", {
 		description: "Start in Claude Code-style plan mode",
@@ -273,8 +276,10 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		pi.setActiveTools(getPlanModeTools(state.toolsBeforePlan ?? [], availableToolNames()));
 	}
 
-	function restoreNormalTools(savedTools = state.toolsBeforePlan): void {
-		pi.setActiveTools(getRestoredTools(savedTools, pi.getActiveTools(), availableToolNames()));
+	function restoreNormalTools(savedTools = state.toolsBeforePlan ?? lastNormalTools): void {
+		const restoredTools = getRestoredTools(savedTools, pi.getActiveTools(), availableToolNames());
+		pi.setActiveTools(restoredTools);
+		lastNormalTools = restoredTools;
 	}
 
 	function enterPlanMode(ctx: ExtensionContext): { reentry: boolean; prompt: string } {
@@ -290,6 +295,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 
 		const toolsBeforePlan = pi.getActiveTools();
+		lastNormalTools = [...toolsBeforePlan];
 		ensurePlanIdentity(ctx);
 		const planExists = readPlanFile(state.planPath) !== null;
 		const reentry = state.hasExitedInSession && planExists;
@@ -361,10 +367,10 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			for (const question of questions) {
 				const selected = await askSingleQuestion(ctx, question);
 				if (!selected) {
-					return textResult(
-						"The user cancelled the question flow. Stop and wait for new instructions.",
-						{ kind: "cancelled", title: "User cancelled questions" },
-					);
+					return textResult("The user cancelled the question flow. Stop and wait for new instructions.", {
+						kind: "cancelled",
+						title: "User cancelled questions",
+					});
 				}
 				answers.push({ question: question.question, answers: selected });
 			}
@@ -388,10 +394,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
 			if (state.phase !== "inactive") {
 				ensurePlanIdentity(ctx);
-				return textResult(
-					`Plan mode is already active. Plan file: ${state.planPath}`,
-					{ kind: "entered", title: "Plan mode already active", planPath: state.planPath },
-				);
+				return textResult(`Plan mode is already active. Plan file: ${state.planPath}`, {
+					kind: "entered",
+					title: "Plan mode already active",
+					planPath: state.planPath,
+				});
 			}
 			if (!ctx.hasUI) {
 				return textResult(
@@ -411,15 +418,12 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				);
 			}
 			const entered = enterPlanMode(ctx);
-			return textResult(
-				`Entered plan mode.\n\n${entered.prompt}`,
-				{
-					kind: "entered",
-					title: "Entered plan mode",
-					subtitle: "Claude is now exploring and designing an implementation approach.",
-					planPath: state.planPath,
-				},
-			);
+			return textResult(`Entered plan mode.\n\n${entered.prompt}`, {
+				kind: "entered",
+				title: "Entered plan mode",
+				subtitle: "Claude is now exploring and designing an implementation approach.",
+				planPath: state.planPath,
+			});
 		},
 		renderCall: () => new Text("", 0, 0),
 		renderResult: renderPlanToolResult,
@@ -451,10 +455,12 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				);
 			}
 			if (!ctx.hasUI) {
-				return textResult(
-					`Plan ready for approval, but no interactive UI is available.\n\n${plan}`,
-					{ kind: "current-plan", title: "Plan ready for approval", planPath: state.planPath, plan },
-				);
+				return textResult(`Plan ready for approval, but no interactive UI is available.\n\n${plan}`, {
+					kind: "current-plan",
+					title: "Plan ready for approval",
+					planPath: state.planPath,
+					plan,
+				});
 			}
 
 			while (true) {
@@ -687,7 +693,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (state.phase === "inactive") {
 			return {
 				messages: event.messages.filter(
-					(message) => !((message as AgentMessage & { customType?: string }).customType === PLAN_MODE_REMINDER_TYPE),
+					(message) =>
+						!((message as AgentMessage & { customType?: string }).customType === PLAN_MODE_REMINDER_TYPE),
 				),
 			};
 		}
@@ -762,7 +769,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		ctx: ExtensionContext,
 		reason: "startup" | "reload" | "new" | "resume" | "fork",
 	): Promise<void> {
+		const previousNormalTools =
+			state.phase === "inactive" ? pi.getActiveTools() : (state.toolsBeforePlan ?? lastNormalTools);
 		state = findLatestPlanModeState(ctx.sessionManager.getBranch()) ?? createDefaultPlanModeState();
+		if (state.toolsBeforePlan) lastNormalTools = [...state.toolsBeforePlan];
+		else if (previousNormalTools) lastNormalTools = [...previousNormalTools];
 
 		if (reason === "fork" && state.planPath) {
 			const oldPlanPath = state.planPath;
