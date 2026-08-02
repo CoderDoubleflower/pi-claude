@@ -42,7 +42,6 @@ const FULL_REMINDER_EVERY = 5;
 const BUILTIN_READ_ONLY_TOOLS = ["read", "grep", "find", "ls"] as const;
 const PLAN_FILE_TOOLS = ["edit", "write"] as const;
 const PLAN_CUSTOM_TOOLS = [ASK_USER_QUESTION_TOOL_NAME, EXIT_PLAN_MODE_TOOL_NAME] as const;
-const PLAN_CUSTOM_TOOL_SET = new Set<string>(PLAN_CUSTOM_TOOLS);
 
 interface PlanRenderDetails {
 	kind:
@@ -154,12 +153,11 @@ function textResult(text: string, details: PlanRenderDetails, isError = false) {
 
 export function getPlanModeTools(toolsBeforePlan: readonly string[], availableToolNames: readonly string[]): string[] {
 	const available = new Set(availableToolNames);
-	const hadNormalTools = toolsBeforePlan.some(
-		(name) => ![ENTER_PLAN_MODE_TOOL_NAME, ASK_USER_QUESTION_TOOL_NAME].includes(name),
-	);
+	const active = new Set(toolsBeforePlan);
 	const requested = [
-		...(hadNormalTools ? BUILTIN_READ_ONLY_TOOLS : []),
-		...(hadNormalTools ? ["bash", ...PLAN_FILE_TOOLS] : []),
+		...BUILTIN_READ_ONLY_TOOLS.filter((name) => active.has(name)),
+		...(active.has("bash") ? ["bash"] : []),
+		...PLAN_FILE_TOOLS.filter((name) => active.has(name)),
 		...PLAN_CUSTOM_TOOLS,
 	];
 	return unique(requested.filter((name) => available.has(name)));
@@ -171,10 +169,8 @@ export function getRestoredTools(
 	availableToolNames: readonly string[],
 ): string[] {
 	const available = new Set(availableToolNames);
-	const base = toolsBeforePlan ?? currentTools.filter((name) => !PLAN_CUSTOM_TOOL_SET.has(name));
-	return unique([...base, ENTER_PLAN_MODE_TOOL_NAME, ASK_USER_QUESTION_TOOL_NAME]).filter((name) =>
-		available.has(name),
-	);
+	const base = toolsBeforePlan ?? currentTools;
+	return unique(base).filter((name) => name !== EXIT_PLAN_MODE_TOOL_NAME && available.has(name));
 }
 
 function getQuestionOptionText(index: number, option: { label: string; description?: string }): string {
@@ -628,8 +624,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		]);
 		if (!allowed.has(event.toolName)) {
 			return {
-				block: true,
-				reason: `Tool ${event.toolName} is unavailable in plan mode because it is not known to be read-only.`,
+					block: true,
+					reason: `Tool ${event.toolName} is unavailable in plan mode because it is not known to be read-only.`,
 			};
 		}
 	});
