@@ -202,8 +202,11 @@ function checkSimpleReadCommand(executable: string, tokens: string[]): PlanShell
 				? unsafe(`${executable} output-file options are not allowed`)
 				: { safe: true };
 		case "less":
-			return hasOption(args, "-o", "--log-file") || hasOption(args, "-O")
-				? unsafe("less log-file options are not allowed")
+			return hasOption(args, "-o", "--log-file") ||
+				hasOption(args, "-O") ||
+				hasLongOption(args, "--cmd") ||
+				args.some((token) => token.startsWith("+!"))
+				? unsafe("less log-file and shell-command options are not allowed")
 				: { safe: true };
 		case "uniq": {
 			const positionals = args.filter((token) => !token.startsWith("-"));
@@ -232,8 +235,10 @@ function checkSimpleReadCommand(executable: string, tokens: string[]): PlanShell
 		case "date":
 			return hasOption(args, "-s", "--set") ? unsafe("date may not change the system clock") : { safe: true };
 		case "bat":
-			return hasLongOption(args, "--pager") || hasLongOption(args, "--generate-config-file")
-				? unsafe("bat pager and config-generation options are not allowed")
+			return args[0] === "cache" ||
+				hasLongOption(args, "--pager") ||
+				hasLongOption(args, "--generate-config-file")
+				? unsafe("bat cache, pager, and config-generation operations are not allowed")
 				: { safe: true };
 		default:
 			return { safe: true };
