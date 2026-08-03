@@ -1,0 +1,111 @@
+name: Patch plan-mode toggle branch
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/patch-plan-toggle-branch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/plan-mode-toggle-shortcut
+          fetch-depth: 0
+
+      - name: Make Shift+Tab toggle plan mode
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          source_path = Path("packages/coding-agent/src/extensions/plan-mode/index.ts")
+          source = source_path.read_text()
+
+          shortcut_line = 'export const PLAN_MODE_SHORTCUT = Key.shift("tab");\n'
+          helper = '''export const PLAN_MODE_SHORTCUT = Key.shift("tab");
+
+export function getPlanModeShortcutAction(phase: PlanModeState["phase"]): "enter" | "exit" {
+\treturn phase === "inactive" ? "enter" : "exit";
+}
+'''
+          if shortcut_line not in source:
+              raise SystemExit("Plan-mode shortcut declaration not found")
+          source = source.replace(shortcut_line, helper, 1)
+
+          old_handler = '''\tpi.registerShortcut(PLAN_MODE_SHORTCUT, {
+\t\tdescription: "Enter or show plan mode",
+\t\thandler: async (ctx) => {
+\t\t\tif (state.phase === "inactive") {
+\t\t\t\tenterPlanMode(ctx);
+\t\t\t\tctx.ui.notify("Plan mode enabled. Only the plan file may be edited.", "info");
+\t\t\t} else {
+\t\t\t\tconst plan = readPlanFile(state.planPath);
+\t\t\t\tctx.ui.notify(plan ? `Current plan: ${state.planPath}` : `Plan file: ${state.planPath}`, "info");
+\t\t\t}
+\t\t},
+\t});'''
+          new_handler = '''\tpi.registerShortcut(PLAN_MODE_SHORTCUT, {
+\t\tdescription: "Toggle plan mode",
+\t\thandler: async (ctx) => {
+\t\t\tif (getPlanModeShortcutAction(state.phase) === "enter") {
+\t\t\t\tenterPlanMode(ctx);
+\t\t\t\tctx.ui.notify("Plan mode enabled. Only the plan file may be edited.", "info");
+\t\t\t\treturn;
+\t\t\t}
+
+\t\t\tleavePlanMode(ctx);
+\t\t\tctx.ui.notify("Plan mode disabled. Normal tools restored.", "info");
+\t\t},
+\t});'''
+          if old_handler not in source:
+              raise SystemExit("Existing plan-mode shortcut handler not found")
+          source_path.write_text(source.replace(old_handler, new_handler, 1))
+
+          test_path = Path("packages/coding-agent/test/plan-mode-shortcut.test.ts")
+          test = test_path.read_text()
+          old_import = 'import { PLAN_MODE_SHORTCUT } from "../src/extensions/plan-mode/index.ts";'
+          new_import = '''import {
+\tgetPlanModeShortcutAction,
+\tPLAN_MODE_SHORTCUT,
+} from "../src/extensions/plan-mode/index.ts";'''
+          if old_import not in test:
+              raise SystemExit("Plan-mode shortcut test import not found")
+          test = test.replace(old_import, new_import, 1)
+
+          closing = "\n});\n"
+          if not test.endswith(closing):
+              raise SystemExit("Unexpected plan-mode shortcut test ending")
+          regression = '''
+
+\tit("toggles back out of every active plan-mode phase", () => {
+\t\texpect(getPlanModeShortcutAction("inactive")).toBe("enter");
+\t\texpect(getPlanModeShortcutAction("planning")).toBe("exit");
+\t\texpect(getPlanModeShortcutAction("awaiting-clear-context")).toBe("exit");
+\t});'''
+          test_path.write_text(test[:-len(closing)] + regression + closing)
+          PY
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/patch-plan-mode-toggle.yml || true
+          git add packages/coding-agent/src/extensions/plan-mode/index.ts packages/coding-agent/test/plan-mode-shortcut.test.ts
+          git commit -m "fix(coding-agent): toggle plan mode with Shift+Tab"
+          git push origin HEAD:fix/plan-mode-toggle-shortcut
+
+      - name: Remove temporary main workflow
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/patch-plan-toggle-branch.yml
+          git commit -m "chore: remove plan-mode toggle patch workflow"
+          git push origin HEAD:main
