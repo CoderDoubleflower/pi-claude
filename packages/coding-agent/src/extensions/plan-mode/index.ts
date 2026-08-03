@@ -37,6 +37,11 @@ import {
 
 export const PLAN_MODE_STATUS_KEY = "native.plan-mode";
 export const PLAN_MODE_SHORTCUT = Key.shift("tab");
+
+export function getPlanModeShortcutAction(phase: PlanModeState["phase"]): "enter" | "exit" {
+	return phase === "inactive" ? "enter" : "exit";
+}
+
 const HUMAN_TURNS_BETWEEN_REMINDERS = 5;
 const FULL_REMINDER_EVERY = 5;
 const BUILTIN_READ_ONLY_TOOLS = ["read", "grep", "find", "ls"] as const;
@@ -586,15 +591,16 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	});
 
 	pi.registerShortcut(PLAN_MODE_SHORTCUT, {
-		description: "Enter or show plan mode",
+		description: "Toggle plan mode",
 		handler: async (ctx) => {
-			if (state.phase === "inactive") {
+			if (getPlanModeShortcutAction(state.phase) === "enter") {
 				enterPlanMode(ctx);
 				ctx.ui.notify("Plan mode enabled. Only the plan file may be edited.", "info");
-			} else {
-				const plan = readPlanFile(state.planPath);
-				ctx.ui.notify(plan ? `Current plan: ${state.planPath}` : `Plan file: ${state.planPath}`, "info");
+				return;
 			}
+
+			leavePlanMode(ctx);
+			ctx.ui.notify("Plan mode disabled. Normal tools restored.", "info");
 		},
 	});
 
@@ -631,8 +637,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		]);
 		if (!allowed.has(event.toolName)) {
 			return {
-				block: true,
-				reason: `Tool ${event.toolName} is unavailable in plan mode because it is not known to be read-only.`,
+					block: true,
+					reason: `Tool ${event.toolName} is unavailable in plan mode because it is not known to be read-only.`,
 			};
 		}
 	});
