@@ -1,0 +1,172 @@
+name: Apply PR 46 security fixes
+
+on:
+  push:
+    branches:
+      - fix/plan-mode-readonly-capabilities
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Apply parameter-level guards and regression tests
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          policy_path = Path("packages/coding-agent/src/extensions/plan-mode/shell-policy.ts")
+          policy = policy_path.read_text()
+
+          old_gh = '''function checkGh(tokens: string[]): PlanShellDecision {
+          \tconst group = tokens[1];
+          \tconst action = tokens[2];
+          \tif (!group || !action) return unsafe("gh requires an explicitly read-only command group and action");
+          \treturn GH_READ_ACTIONS.get(group)?.has(action)
+          \t\t? { safe: true }
+          \t\t: unsafe(`gh ${group} ${action} is not a recognized read-only operation`);
+          }
+          '''
+          new_gh = '''function checkGh(tokens: string[]): PlanShellDecision {
+          \tconst group = tokens[1];
+          \tconst action = tokens[2];
+          \tif (!group || !action) return unsafe("gh requires an explicitly read-only command group and action");
+          \tif (!GH_READ_ACTIONS.get(group)?.has(action)) {
+          \t\treturn unsafe(`gh ${group} ${action} is not a recognized read-only operation`);
+          \t}
+
+          \tif (group === "auth" && action === "status") {
+          \t\tconst args = tokens.slice(3);
+          \t\tif (hasOption(args, "-t", "--show-token")) {
+          \t\t\treturn unsafe("gh auth status token display is not allowed in plan mode");
+          \t\t}
+          \t}
+
+          \treturn { safe: true };
+          }
+          '''
+
+          old_docker = '''function checkDocker(tokens: string[]): PlanShellDecision {
+          \tconst subcommand = tokens[1];
+          \tif (!subcommand) return unsafe("docker requires an explicitly read-only subcommand");
+          \tif (DOCKER_READ_SUBCOMMANDS.has(subcommand)) return { safe: true };
+          \tconst action = tokens[2];
+          \treturn action && DOCKER_NESTED_READ_ACTIONS.get(subcommand)?.has(action)
+          \t\t? { safe: true }
+          \t\t: unsafe(`docker ${subcommand}${action ? ` ${action}` : ""} may change container state`);
+          }
+          '''
+          new_docker = '''function checkDockerComposeConfig(tokens: string[]): PlanShellDecision {
+          \tconst args = tokens.slice(3);
+          \treturn hasOption(args, "-o", "--output") || hasLongOption(args, "--lock-image-digests")
+          \t\t? unsafe("docker compose config output and lock-file options are not allowed in plan mode")
+          \t\t: { safe: true };
+          }
+
+          function checkDocker(tokens: string[]): PlanShellDecision {
+          \tconst subcommand = tokens[1];
+          \tif (!subcommand) return unsafe("docker requires an explicitly read-only subcommand");
+          \tif (DOCKER_READ_SUBCOMMANDS.has(subcommand)) return { safe: true };
+          \tconst action = tokens[2];
+          \tif (subcommand === "compose" && action === "config") return checkDockerComposeConfig(tokens);
+          \treturn action && DOCKER_NESTED_READ_ACTIONS.get(subcommand)?.has(action)
+          \t\t? { safe: true }
+          \t\t: unsafe(`docker ${subcommand}${action ? ` ${action}` : ""} may change container state`);
+          }
+          '''
+
+          def replace_once(source: str, old: str, new: str, label: str) -> str:
+              count = source.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one {label} block, found {count}")
+              return source.replace(old, new, 1)
+
+          policy = replace_once(policy, old_gh, new_gh, "checkGh")
+          policy = replace_once(policy, old_docker, new_docker, "checkDocker")
+          policy_path.write_text(policy)
+
+          test_path = Path("packages/coding-agent/test/plan-mode-shell-security.test.ts")
+          test_path.write_text('''import { describe, expect, it } from "vitest";
+          import { checkPlanReadOnlyCommand } from "../src/extensions/plan-mode/shell-policy.ts";
+
+          describe("plan-mode shell security guards", () => {
+          \tit.each([
+          \t\t"gh auth status",
+          \t\t"gh auth status --hostname github.com",
+          \t\t"docker compose config",
+          \t\t"docker compose config --services",
+          \t\t"docker compose config --format json",
+          \t])("allows safe inspection command: %s", (command) => {
+          \t\texpect(checkPlanReadOnlyCommand(command)).toEqual({ safe: true });
+          \t});
+
+          \tit.each([
+          \t\t"gh auth status --show-token",
+          \t\t"gh auth status --show-token=true",
+          \t\t"gh auth status -t",
+          \t\t"gh auth status -t=true",
+          \t\t"gh auth status --show-token | head",
+          \t])("blocks GitHub token disclosure: %s", (command) => {
+          \t\texpect(checkPlanReadOnlyCommand(command).safe).toBe(false);
+          \t});
+
+          \tit.each([
+          \t\t"docker compose config -o output.yml",
+          \t\t"docker compose config -ooutput.yml",
+          \t\t"docker compose config --output output.yml",
+          \t\t"docker compose config --output=output.yml",
+          \t\t"docker compose config --lock-image-digests",
+          \t\t"docker compose config -o output.yml && git status --short",
+          \t])("blocks docker compose config file writes: %s", (command) => {
+          \t\texpect(checkPlanReadOnlyCommand(command).safe).toBe(false);
+          \t});
+          });
+          ''')
+
+          Path(".github/workflows/apply-pr46-security-fixes.yml").unlink()
+          PY
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+          sudo ln -s $(which fdfind) /usr/local/bin/fd
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Targeted regression test
+        run: npm --prefix packages/coding-agent test -- test/plan-mode-shell-security.test.ts
+
+      - name: Build
+        run: npm run build
+
+      - name: Check
+        run: npm run check
+
+      - name: Full test suite
+        run: npm test
+
+      - name: Commit verified fixes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/coding-agent/src/extensions/plan-mode/shell-policy.ts packages/coding-agent/test/plan-mode-shell-security.test.ts .github/workflows/apply-pr46-security-fixes.yml
+          git commit -m "fix(coding-agent): harden plan-mode command guards"
+          git push origin HEAD:fix/plan-mode-readonly-capabilities
