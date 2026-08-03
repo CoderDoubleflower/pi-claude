@@ -1,3 +1,4 @@
+# Triggered after workflow registration so the push event is recognized.
 name: Apply plan clear-context session patch
 
 on:
