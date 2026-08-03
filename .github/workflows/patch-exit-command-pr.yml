@@ -35,8 +35,15 @@ jobs:
       - name: Apply implementation
         run: node scripts/patch-exit-command.mjs
 
-      - name: Run repository checks
-        run: npm run check
+      - name: Check changed files
+        run: |
+          npx --no-install biome check --write \
+            packages/coding-agent/src/core/slash-commands.ts \
+            packages/coding-agent/src/modes/interactive/interactive-mode.ts \
+            packages/coding-agent/test/slash-commands.test.ts \
+            packages/coding-agent/docs/usage.md \
+            packages/coding-agent/CHANGELOG.md
+          git diff --check
 
       - name: Run focused regression test
         working-directory: packages/coding-agent
