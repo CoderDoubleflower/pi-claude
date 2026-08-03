@@ -87,7 +87,7 @@
 		"@mariozechner/clipboard": "0.3.9"
 	},
 	"devDependencies": {
-		"@types/cross-spawn": "7.0.6",
+		"@types/cross-spawn": "6.0.6",
 		"@types/diff": "7.0.2",
 		"@types/hosted-git-info": "3.0.5",
 		"@types/ms": "2.1.0",
