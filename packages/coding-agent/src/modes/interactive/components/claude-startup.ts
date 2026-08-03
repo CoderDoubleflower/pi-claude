@@ -23,6 +23,8 @@ export interface ClaudeStartupSnapshot {
 	appName: string;
 	version: string;
 	model?: ClaudeStartupModel;
+	/** Optional fallback when the caller cannot expose the active model. */
+	modelLine?: string;
 	thinkingLevel?: string;
 	cwd: string;
 }
@@ -65,6 +67,10 @@ function truncateFromLeft(text: string, width: number): string {
 }
 
 function formatModelLine(snapshot: ClaudeStartupSnapshot): string {
+	if (snapshot.modelLine) {
+		return sanitizeSingleLine(snapshot.modelLine);
+	}
+
 	const model = snapshot.model;
 	if (!model) return "No model selected";
 
