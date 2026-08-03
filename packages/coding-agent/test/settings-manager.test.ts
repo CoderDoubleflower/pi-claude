@@ -397,29 +397,6 @@ describe("SettingsManager", () => {
 		});
 	});
 
-	describe("UI mode", () => {
-		it("defaults to regular and persists fullscreen mode", async () => {
-			const manager = SettingsManager.create(projectDir, agentDir);
-
-			expect(manager.getUiMode()).toBe("regular");
-
-			manager.setUiMode("fullscreen");
-			await manager.flush();
-
-			expect(manager.getUiMode()).toBe("fullscreen");
-			const savedSettings = JSON.parse(readFileSync(join(agentDir, "settings.json"), "utf-8"));
-			expect(savedSettings.uiMode).toBe("fullscreen");
-		});
-
-		it("falls back to regular for unsupported values", () => {
-			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ uiMode: "other" }));
-
-			const manager = SettingsManager.create(projectDir, agentDir);
-
-			expect(manager.getUiMode()).toBe("regular");
-		});
-	});
-
 	it("validates and persists the fullscreen scrollbar mode", async () => {
 		const manager = SettingsManager.create(projectDir, agentDir);
 		expect(manager.getFullscreenScrollbar()).toBe("auto");
@@ -541,6 +518,24 @@ describe("SettingsManager", () => {
 			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ shellPath: "~" }));
 			const manager = SettingsManager.create(projectDir, agentDir);
 			expect(manager.getShellPath()).toBe(homedir());
+		});
+	});
+
+	describe("fixed fullscreen UI", () => {
+		it("ignores a persisted regular UI mode", () => {
+			writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ uiMode: "regular" }));
+			const manager = SettingsManager.create(projectDir, agentDir);
+			expect(manager.getUiMode()).toBe("fullscreen");
+		});
+
+		it("does not persist attempts to change the UI mode", async () => {
+			const settingsPath = join(agentDir, "settings.json");
+			writeFileSync(settingsPath, JSON.stringify({ theme: "dark" }));
+			const manager = SettingsManager.create(projectDir, agentDir);
+			manager.setUiMode("regular");
+			await manager.flush();
+			expect(manager.getUiMode()).toBe("fullscreen");
+			expect(JSON.parse(readFileSync(settingsPath, "utf-8"))).toEqual({ theme: "dark" });
 		});
 	});
 });

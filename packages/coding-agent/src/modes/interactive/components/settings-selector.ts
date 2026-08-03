@@ -616,13 +616,6 @@ export class SettingsSelectorComponent extends Container {
 					),
 			},
 			{
-				id: "ui-mode",
-				label: "UI mode",
-				description: "Interface layout used after restart; fullscreen mode is experimental",
-				currentValue: config.uiMode,
-				values: ["regular", "fullscreen"],
-			},
-			{
 				id: "fullscreen-scrollbar",
 				label: "Fullscreen scrollbar",
 				description: "Scrollbar behavior in fullscreen mode; has no effect in regular mode",

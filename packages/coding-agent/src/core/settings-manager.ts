@@ -1126,13 +1126,11 @@ export class SettingsManager {
 	}
 
 	getUiMode(): UiMode {
-		return this.settings.uiMode === "fullscreen" ? "fullscreen" : "regular";
+		return "fullscreen";
 	}
 
-	setUiMode(mode: UiMode): void {
-		this.globalSettings.uiMode = mode;
-		this.markModified("uiMode");
-		this.save();
+	setUiMode(_mode: UiMode): void {
+		// Pi-Claude intentionally fixes the terminal renderer to fullscreen.
 	}
 
 	getFullscreenScrollbar(): ScrollViewScrollbar {
