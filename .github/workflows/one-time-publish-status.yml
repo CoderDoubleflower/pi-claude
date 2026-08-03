@@ -1,0 +1,77 @@
+name: One-time npm publish status
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/one-time-publish-status.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Wait for latest publish run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow publish-npm.yml --limit 1 --json databaseId --jq '.[0].databaseId')"
+          if [[ -z "$run_id" ]]; then
+            echo 'No publish workflow run found.' >&2
+            exit 1
+          fi
+
+          set +e
+          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status
+          watch_status=$?
+          set -e
+
+          gh run view "$run_id" --repo "$GITHUB_REPOSITORY" \
+            --json databaseId,status,conclusion,createdAt,updatedAt,headSha,url,displayTitle,jobs \
+            > /tmp/publish-status.json
+          node -e '
+            const fs = require("node:fs");
+            const path = "/tmp/publish-status.json";
+            const value = JSON.parse(fs.readFileSync(path, "utf8"));
+            value.watchStatus = Number(process.argv[1]);
+            fs.writeFileSync(path, JSON.stringify(value, null, 2) + "\n");
+          ' "$watch_status"
+
+      - name: Record status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          path='.github/publish-status.json'
+          content="$(base64 -w0 /tmp/publish-status.json)"
+          existing_sha="$(gh api "repos/$GITHUB_REPOSITORY/contents/$path?ref=main" --jq .sha 2>/dev/null || true)"
+          if [[ -n "$existing_sha" ]]; then
+            gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/$path" \
+              -f message='chore: update npm publish status' \
+              -f content="$content" \
+              -f sha="$existing_sha" \
+              -f branch=main
+          else
+            gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/$path" \
+              -f message='chore: record npm publish status' \
+              -f content="$content" \
+              -f branch=main
+          fi
+
+      - name: Remove one-time monitor
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          path='.github/workflows/one-time-publish-status.yml'
+          sha="$(gh api "repos/$GITHUB_REPOSITORY/contents/$path?ref=main" --jq .sha)"
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/contents/$path" \
+            -f message='chore: remove one-time publish monitor' \
+            -f sha="$sha" \
+            -f branch=main
