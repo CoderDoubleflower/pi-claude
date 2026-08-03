@@ -39,7 +39,7 @@ jobs:
       - run: python3 scripts/apply-plan-mode-readonly-fix.py
       - run: npx biome check --write packages/coding-agent/src/extensions/plan-mode/index.ts packages/coding-agent/src/extensions/plan-mode/shell-policy.ts packages/coding-agent/test/plan-mode.test.ts
       - run: npm --prefix packages/coding-agent test -- test/plan-mode.test.ts
-      - run: npm --prefix packages/coding-agent run build
+      - run: npm run build
 
       - name: Commit verified fix
         run: |
@@ -48,6 +48,12 @@ jobs:
           rm -f .github/workflows/apply-plan-mode-readonly-fix.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add -A -- \
+            packages/coding-agent/src/extensions/plan-mode/index.ts \
+            packages/coding-agent/src/extensions/plan-mode/shell-policy.ts \
+            packages/coding-agent/test/plan-mode.test.ts \
+            scripts/apply-plan-mode-readonly-fix.py \
+            scripts/plan-mode-shell-policy.ts.tmp \
+            .github/workflows/apply-plan-mode-readonly-fix.yml
           git commit -m "fix(coding-agent): relax plan-mode read-only exploration"
           git push origin HEAD:fix/plan-mode-readonly-capabilities
