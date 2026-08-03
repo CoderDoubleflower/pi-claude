@@ -1,0 +1,92 @@
+name: Apply PR 45 compatibility fix
+
+on:
+  pull_request_target:
+    types: [reopened]
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  patch:
+    if: github.event.pull_request.number == 45
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/plan-clear-context-session-clean
+          fetch-depth: 0
+
+      - name: Patch compatibility
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          types = Path("packages/coding-agent/src/core/extensions/types.ts")
+          text = types.read_text()
+          required = "\tnewSession(options?: {\n\t\tparentSession?: string;\n\t\tsetup?: (sessionManager: SessionManager) => Promise<void>;\n\t\twithSession?: (ctx: ReplacedSessionContext) => Promise<void>;\n\t}): Promise<{ cancelled: boolean }>;\n\t/** Get the current effective system prompt. */"
+          optional = required.replace("\tnewSession(", "\tnewSession?(", 1)
+          if optional not in text:
+              if text.count(required) != 1:
+                  raise SystemExit("Could not uniquely locate ExtensionContext.newSession")
+              types.write_text(text.replace(required, optional, 1))
+
+          plan = Path("packages/coding-agent/src/extensions/plan-mode/index.ts")
+          text = plan.read_text()
+          old = '''\t\tsetTimeout(() => {
+\t\t\tlet deliveredInFreshSession = false;
+\t\t\tvoid ctx
+\t\t\t\t.newSession({
+'''
+          new = '''\t\tsetTimeout(() => {
+\t\t\tconst startFreshSession = ctx.newSession;
+\t\t\tif (!startFreshSession) {
+\t\t\t\tdeliverInCurrentSession("Context clear is unavailable; starting implementation in the current context.");
+\t\t\t\treturn;
+\t\t\t}
+\t\t\tlet deliveredInFreshSession = false;
+\t\t\tvoid startFreshSession({
+'''
+          if new not in text:
+              if text.count(old) != 1:
+                  raise SystemExit("Could not uniquely locate fresh-session transition")
+              plan.write_text(text.replace(old, new, 1))
+          PY
+
+          rm -f .github/trigger-plan-clear-context-compat
+          npx biome check --write packages/coding-agent/src/core/extensions/types.ts packages/coding-agent/src/extensions/plan-mode/index.ts
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A packages/coding-agent/src .github
+          git commit -m "fix(coding-agent): make plan context replacement capability optional"
+          git push origin HEAD:feat/plan-clear-context-session-clean
+
+      - name: Clean temporary files from main
+        if: always()
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          changed=false
+          for path in \
+            .github/workflows/apply-pr45-fix-reopen.yml \
+            .github/workflows/fix-pr45-plan-context.yml \
+            .github/workflows/fix-plan-clear-context-push.yml \
+            .github/workflows/fix-plan-clear-context-optional.yml \
+            .github/workflows/finalize-plan-clear-context-pr.yml \
+            .github/trigger-plan-clear-context-push; do
+            if [ -f "$path" ]; then
+              git rm "$path"
+              changed=true
+            fi
+          done
+          if [ "$changed" = true ]; then
+            git commit -m "chore: remove plan clear-context fix runners"
+            git push origin main
+          fi
