@@ -116,7 +116,7 @@ describe("AgentSession.getSessionStats", () => {
 		}
 	});
 
-	it("reports unknown current context usage immediately after compaction", async () => {
+	it("estimates current context usage immediately after compaction", async () => {
 		const { session, sessionManager } = await createSession();
 
 		try {
@@ -132,8 +132,15 @@ describe("AgentSession.getSessionStats", () => {
 			// Totals cover ALL entries, including history compacted away (180k + 195k).
 			expect(stats.tokens.input).toBe(375_000);
 			expect(stats.contextUsage).toBeDefined();
-			expect(stats.contextUsage?.tokens).toBeNull();
-			expect(stats.contextUsage?.percent).toBeNull();
+			expect(stats.contextUsage?.contextWindow).toBe(model.contextWindow);
+			const estimatedTokens = stats.contextUsage?.tokens;
+			const estimatedPercent = stats.contextUsage?.percent;
+			expect(estimatedTokens).not.toBeNull();
+			expect(estimatedTokens ?? 0).toBeGreaterThan(0);
+			expect(estimatedPercent).not.toBeNull();
+			expect(estimatedPercent ?? 0).toBeGreaterThan(0);
+			expect(estimatedPercent ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(100);
+			expect(estimatedPercent).toBe(((estimatedTokens ?? 0) / model.contextWindow) * 100);
 		} finally {
 			session.dispose();
 		}
