@@ -5,6 +5,7 @@ export interface PlanShellDecision {
 
 const SIMPLE_READ_COMMANDS = new Set([
 	"pwd",
+	"cd",
 	"ls",
 	"cat",
 	"head",
@@ -33,10 +34,21 @@ const SIMPLE_READ_COMMANDS = new Set([
 	"date",
 	"ps",
 	"jq",
+	"sed",
+	"cut",
+	"tr",
+	"strings",
+	"basename",
+	"dirname",
+	"realpath",
+	"readlink",
 	"bat",
 	"eza",
 	"echo",
 	"printf",
+	"true",
+	"false",
+	":",
 ]);
 
 const GIT_READ_SUBCOMMANDS = new Set([
@@ -52,6 +64,41 @@ const GIT_READ_SUBCOMMANDS = new Set([
 	"grep",
 	"describe",
 	"shortlog",
+]);
+
+const GH_READ_ACTIONS = new Map<string, ReadonlySet<string>>([
+	["pr", new Set(["view", "list", "status", "checks", "diff"])],
+	["issue", new Set(["view", "list", "status"])],
+	["repo", new Set(["view", "list"])],
+	["run", new Set(["view", "list", "watch"])],
+	["workflow", new Set(["view", "list"])],
+	["release", new Set(["view", "list"])],
+	["search", new Set(["code", "commits", "issues", "prs", "repos"])],
+	["auth", new Set(["status"])],
+]);
+
+const DOCKER_READ_SUBCOMMANDS = new Set([
+	"inspect",
+	"ps",
+	"logs",
+	"images",
+	"info",
+	"version",
+	"stats",
+	"top",
+	"port",
+	"diff",
+	"events",
+]);
+
+const DOCKER_NESTED_READ_ACTIONS = new Map<string, ReadonlySet<string>>([
+	["container", new Set(["inspect", "ls", "logs", "stats", "top", "port", "diff"])],
+	["image", new Set(["inspect", "ls", "history"])],
+	["network", new Set(["inspect", "ls"])],
+	["volume", new Set(["inspect", "ls"])],
+	["context", new Set(["inspect", "ls", "show"])],
+	["system", new Set(["df", "info", "events"])],
+	["compose", new Set(["ps", "logs", "config", "images", "top", "port"])],
 ]);
 
 const GIT_EXECUTION_OPTIONS = ["--ext-diff", "--textconv", "--filters", "--open-files-in-pager"] as const;
@@ -75,6 +122,95 @@ const GIT_CONFIG_MUTATION_OPTIONS = [
 ] as const;
 const GIT_CONFIG_READ_OPTIONS = ["--get", "--get-all", "--get-regexp", "--list"] as const;
 const PACKAGE_READ_SUBCOMMANDS = new Set(["list", "ls", "view", "info", "search", "outdated", "audit", "why"]);
+
+function unsafe(reason: string): PlanShellDecision {
+	return { safe: false, reason };
+}
+
+function splitShellCommands(command: string): { commands: string[] } | PlanShellDecision {
+	const commands: string[] = [];
+	let current = "";
+	let quote: "'" | '"' | null = null;
+	let escaped = false;
+
+	const flush = (): PlanShellDecision | undefined => {
+		const segment = current.trim();
+		if (!segment) return unsafe("shell operators must separate complete commands");
+		commands.push(segment);
+		current = "";
+		return undefined;
+	};
+
+	for (let index = 0; index < command.length; index += 1) {
+		const char = command[index];
+		if (char === "\r" || char === "\n") return unsafe("multi-line shell commands are not allowed in plan mode");
+
+		if (escaped) {
+			current += char;
+			escaped = false;
+			continue;
+		}
+		if (char === "\\" && quote !== "'") {
+			current += char;
+			escaped = true;
+			continue;
+		}
+		if (quote === "'") {
+			current += char;
+			if (char === "'") quote = null;
+			continue;
+		}
+		if (quote === '"') {
+			current += char;
+			if (char === '"') {
+				quote = null;
+				continue;
+			}
+			if (char === "$" || char === "`") {
+				return unsafe("shell expansion and command substitution are not allowed in plan mode");
+			}
+			continue;
+		}
+		if (char === "'" || char === '"') {
+			quote = char;
+			current += char;
+			continue;
+		}
+		if (char === "$" || char === "`") {
+			return unsafe("shell expansion and command substitution are not allowed in plan mode");
+		}
+		if (char === "<" || char === ">") {
+			return unsafe("file and stream redirections are not allowed in plan mode");
+		}
+		if ("*?[]{}()".includes(char)) {
+			return unsafe("unquoted shell expansion syntax is not allowed in plan mode");
+		}
+		if (char === "&") {
+			if (command[index + 1] !== "&") return unsafe("background shell execution is not allowed in plan mode");
+			const decision = flush();
+			if (decision) return decision;
+			index += 1;
+			continue;
+		}
+		if (char === "|") {
+			const decision = flush();
+			if (decision) return decision;
+			if (command[index + 1] === "|") index += 1;
+			continue;
+		}
+		if (char === ";") {
+			const decision = flush();
+			if (decision) return decision;
+			continue;
+		}
+		current += char;
+	}
+
+	if (escaped || quote) return unsafe("command could not be parsed safely");
+	const decision = flush();
+	if (decision) return decision;
+	return { commands };
+}
 
 function tokenize(command: string): string[] | null {
 	const tokens: string[] = [];
@@ -115,57 +251,6 @@ function tokenize(command: string): string[] | null {
 	return tokens;
 }
 
-function unsafe(reason: string): PlanShellDecision {
-	return { safe: false, reason };
-}
-
-function checkShellSyntax(command: string): PlanShellDecision | undefined {
-	let quote: "'" | '"' | null = null;
-	let escaped = false;
-
-	for (const char of command) {
-		if (char === "\r" || char === "\n") return unsafe("multi-line shell commands are not allowed in plan mode");
-
-		if (escaped) {
-			escaped = false;
-			continue;
-		}
-		if (char === "\\" && quote !== "'") {
-			escaped = true;
-			continue;
-		}
-		if (quote === "'") {
-			if (char === "'") quote = null;
-			continue;
-		}
-		if (quote === '"') {
-			if (char === '"') {
-				quote = null;
-				continue;
-			}
-			if (char === "$" || char === "`") {
-				return unsafe("shell expansion and command substitution are not allowed in plan mode");
-			}
-			continue;
-		}
-		if (char === "'" || char === '"') {
-			quote = char;
-			continue;
-		}
-		if (char === "$" || char === "`") {
-			return unsafe("shell expansion and command substitution are not allowed in plan mode");
-		}
-		if (";&|<>".includes(char)) {
-			return unsafe("shell control operators and redirections are not allowed in plan mode");
-		}
-		if ("*?[]{}()".includes(char)) {
-			return unsafe("unquoted shell expansion syntax is not allowed in plan mode");
-		}
-	}
-
-	return escaped || quote ? unsafe("command could not be parsed safely") : undefined;
-}
-
 function isLongOption(token: string, option: string): boolean {
 	if (!token.startsWith("--")) return false;
 	const name = token.split("=", 1)[0];
@@ -187,6 +272,113 @@ function hasOption(tokens: readonly string[], short: string, long?: string): boo
 			(long !== undefined && isLongOption(token, long)) ||
 			(short.length === 2 && token.startsWith(short) && token.length > 2),
 	);
+}
+
+function findUnescapedDelimiter(value: string, delimiter: string, start: number): number {
+	let escaped = false;
+	for (let index = start; index < value.length; index += 1) {
+		const char = value[index];
+		if (escaped) {
+			escaped = false;
+			continue;
+		}
+		if (char === "\\") {
+			escaped = true;
+			continue;
+		}
+		if (char === delimiter) return index;
+	}
+	return -1;
+}
+
+function isSafeSedExpression(expression: string): boolean {
+	const commands = expression
+		.split(";")
+		.map((part) => part.trim())
+		.filter(Boolean);
+	if (commands.length === 0) return false;
+
+	return commands.every((command) => {
+		const withoutAddress = command.replace(/^\s*(?:\d+|\$)(?:\s*,\s*(?:\d+|\$))?\s*/, "").trim();
+		if (/^(?:p|d|q|=)$/.test(withoutAddress)) return true;
+		if (!withoutAddress.startsWith("s") || withoutAddress.length < 4) return false;
+
+		const delimiter = withoutAddress[1];
+		if (!delimiter || /[A-Za-z0-9\s\\]/.test(delimiter)) return false;
+		const patternEnd = findUnescapedDelimiter(withoutAddress, delimiter, 2);
+		if (patternEnd < 0) return false;
+		const replacementEnd = findUnescapedDelimiter(withoutAddress, delimiter, patternEnd + 1);
+		if (replacementEnd < 0) return false;
+		const flags = withoutAddress.slice(replacementEnd + 1).trim();
+		return /^[0-9gIp]*$/.test(flags);
+	});
+}
+
+function checkSed(tokens: string[]): PlanShellDecision {
+	const args = tokens.slice(1);
+	const expressions: string[] = [];
+	let hasExplicitExpression = false;
+	let positionalScriptConsumed = false;
+
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		if (arg === "-i" || arg.startsWith("-i") || isLongOption(arg, "--in-place")) {
+			return unsafe("sed in-place editing is not allowed");
+		}
+		if (arg === "-f" || arg.startsWith("-f") || isLongOption(arg, "--file")) {
+			return unsafe("sed script files are not allowed because they can contain write or execute commands");
+		}
+		if (arg === "-e" || arg === "--expression") {
+			const expression = args[index + 1];
+			if (!expression) return unsafe("sed expression option requires a value");
+			expressions.push(expression);
+			hasExplicitExpression = true;
+			index += 1;
+			continue;
+		}
+		if (arg.startsWith("-e") && arg.length > 2) {
+			expressions.push(arg.slice(2));
+			hasExplicitExpression = true;
+			continue;
+		}
+		if (arg.startsWith("--expression=")) {
+			expressions.push(arg.slice("--expression=".length));
+			hasExplicitExpression = true;
+			continue;
+		}
+		if (
+			[
+				"-n",
+				"--quiet",
+				"--silent",
+				"-E",
+				"-r",
+				"--regexp-extended",
+				"-z",
+				"--null-data",
+				"-u",
+				"--unbuffered",
+				"-s",
+				"--separate",
+				"--posix",
+				"--debug",
+			].includes(arg)
+		) {
+			continue;
+		}
+		if (arg.startsWith("-")) return unsafe(`sed option ${arg} is not allowed in plan mode`);
+		if (!hasExplicitExpression && !positionalScriptConsumed) {
+			expressions.push(arg);
+			positionalScriptConsumed = true;
+		}
+	}
+
+	if (expressions.length === 0) return unsafe("sed requires an explicitly validated expression");
+	return expressions.every(isSafeSedExpression)
+		? { safe: true }
+		: unsafe(
+				"sed expressions may only print, delete from the stream, quit, show line numbers, or substitute to stdout",
+			);
 }
 
 function checkSimpleReadCommand(executable: string, tokens: string[]): PlanShellDecision {
@@ -240,6 +432,8 @@ function checkSimpleReadCommand(executable: string, tokens: string[]): PlanShell
 				hasLongOption(args, "--generate-config-file")
 				? unsafe("bat cache, pager, and config-generation operations are not allowed")
 				: { safe: true };
+		case "sed":
+			return checkSed(tokens);
 		default:
 			return { safe: true };
 	}
@@ -290,6 +484,42 @@ function checkGit(tokens: string[]): PlanShellDecision {
 	return unsafe(`git ${subcommand} may change repository state`);
 }
 
+function checkGh(tokens: string[]): PlanShellDecision {
+	const group = tokens[1];
+	const action = tokens[2];
+	if (!group || !action) return unsafe("gh requires an explicitly read-only command group and action");
+	if (!GH_READ_ACTIONS.get(group)?.has(action)) {
+		return unsafe(`gh ${group} ${action} is not a recognized read-only operation`);
+	}
+
+	if (group === "auth" && action === "status") {
+		const args = tokens.slice(3);
+		if (hasOption(args, "-t", "--show-token")) {
+			return unsafe("gh auth status token display is not allowed in plan mode");
+		}
+	}
+
+	return { safe: true };
+}
+
+function checkDockerComposeConfig(tokens: string[]): PlanShellDecision {
+	const args = tokens.slice(3);
+	return hasOption(args, "-o", "--output") || hasLongOption(args, "--lock-image-digests")
+		? unsafe("docker compose config output and lock-file options are not allowed in plan mode")
+		: { safe: true };
+}
+
+function checkDocker(tokens: string[]): PlanShellDecision {
+	const subcommand = tokens[1];
+	if (!subcommand) return unsafe("docker requires an explicitly read-only subcommand");
+	if (DOCKER_READ_SUBCOMMANDS.has(subcommand)) return { safe: true };
+	const action = tokens[2];
+	if (subcommand === "compose" && action === "config") return checkDockerComposeConfig(tokens);
+	return action && DOCKER_NESTED_READ_ACTIONS.get(subcommand)?.has(action)
+		? { safe: true }
+		: unsafe(`docker ${subcommand}${action ? ` ${action}` : ""} may change container state`);
+}
+
 function checkFind(tokens: string[]): PlanShellDecision {
 	const unsafePrimary = tokens.find((token) =>
 		["-delete", "-exec", "-execdir", "-ok", "-okdir", "-fprint", "-fprint0", "-fprintf", "-fls"].includes(token),
@@ -297,14 +527,8 @@ function checkFind(tokens: string[]): PlanShellDecision {
 	return unsafePrimary ? unsafe(`find ${unsafePrimary} can change state or write files`) : { safe: true };
 }
 
-export function checkPlanReadOnlyCommand(command: string): PlanShellDecision {
-	const trimmed = command.trim();
-	if (!trimmed) return unsafe("empty command");
-
-	const syntaxDecision = checkShellSyntax(trimmed);
-	if (syntaxDecision) return syntaxDecision;
-
-	const tokens = tokenize(trimmed);
+function checkSingleReadOnlyCommand(command: string): PlanShellDecision {
+	const tokens = tokenize(command);
 	if (!tokens || tokens.length === 0) return unsafe("command could not be parsed safely");
 	const executable = tokens[0];
 	if (executable.includes("/") || executable.includes("\\")) {
@@ -314,6 +538,8 @@ export function checkPlanReadOnlyCommand(command: string): PlanShellDecision {
 	if (SIMPLE_READ_COMMANDS.has(executable)) return checkSimpleReadCommand(executable, tokens);
 	if (executable === "find") return checkFind(tokens);
 	if (executable === "git") return checkGit(tokens);
+	if (executable === "gh") return checkGh(tokens);
+	if (executable === "docker") return checkDocker(tokens);
 	if (executable === "npm" || executable === "pnpm" || executable === "yarn") {
 		const subcommand = tokens[1];
 		const requestsMutation = tokens
@@ -330,6 +556,23 @@ export function checkPlanReadOnlyCommand(command: string): PlanShellDecision {
 	}
 
 	return unsafe(`${executable} is not in the plan-mode read-only allowlist`);
+}
+
+export function checkPlanReadOnlyCommand(command: string): PlanShellDecision {
+	const trimmed = command.trim();
+	if (!trimmed) return unsafe("empty command");
+
+	const split = splitShellCommands(trimmed);
+	if ("safe" in split) return split;
+	for (const subcommand of split.commands) {
+		const decision = checkSingleReadOnlyCommand(subcommand);
+		if (!decision.safe) {
+			return unsafe(
+				`subcommand ${JSON.stringify(subcommand)} is not read-only: ${decision.reason ?? "unknown reason"}`,
+			);
+		}
+	}
+	return { safe: true };
 }
 
 export function isPlanReadOnlyCommand(command: string): boolean {

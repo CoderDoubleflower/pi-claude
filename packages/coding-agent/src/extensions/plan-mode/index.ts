@@ -44,9 +44,9 @@ export function getPlanModeShortcutAction(phase: PlanModeState["phase"]): "enter
 
 const HUMAN_TURNS_BETWEEN_REMINDERS = 5;
 const FULL_REMINDER_EVERY = 5;
-const BUILTIN_READ_ONLY_TOOLS = ["read", "grep", "find", "ls"] as const;
-const PLAN_FILE_TOOLS = ["edit", "write"] as const;
 const PLAN_CUSTOM_TOOLS = [ASK_USER_QUESTION_TOOL_NAME, EXIT_PLAN_MODE_TOOL_NAME] as const;
+const PLAN_ALWAYS_ALLOWED_TOOLS = new Set<string>(["read", "grep", "find", "ls", "TodoWrite", ...PLAN_CUSTOM_TOOLS]);
+const PLAN_TOOL_INPUT_PREVIEW_LIMIT = 1200;
 
 interface PlanRenderDetails {
 	kind:
@@ -104,6 +104,18 @@ const ExitPlanModeSchema = Type.Object({
 
 function unique(values: readonly string[]): string[] {
 	return [...new Set(values)];
+}
+
+function buildPlanToolInputPreview(input: Record<string, unknown>): string {
+	let serialized: string;
+	try {
+		serialized = JSON.stringify(input, null, 2);
+	} catch {
+		serialized = "(arguments could not be serialized)";
+	}
+	return serialized.length > PLAN_TOOL_INPUT_PREVIEW_LIMIT
+		? `${serialized.slice(0, PLAN_TOOL_INPUT_PREVIEW_LIMIT)}…`
+		: serialized;
 }
 
 function isLightTheme(theme: Theme): boolean {
@@ -164,13 +176,7 @@ function textResult(text: string, details: PlanRenderDetails, isError = false) {
 
 export function getPlanModeTools(toolsBeforePlan: readonly string[], availableToolNames: readonly string[]): string[] {
 	const available = new Set(availableToolNames);
-	const active = new Set(toolsBeforePlan);
-	const requested = [
-		...BUILTIN_READ_ONLY_TOOLS.filter((name) => active.has(name)),
-		...(active.has("bash") ? ["bash"] : []),
-		...PLAN_FILE_TOOLS.filter((name) => active.has(name)),
-		...PLAN_CUSTOM_TOOLS,
-	];
+	const requested = [...toolsBeforePlan.filter((name) => name !== ENTER_PLAN_MODE_TOOL_NAME), ...PLAN_CUSTOM_TOOLS];
 	return unique(requested.filter((name) => available.has(name)));
 }
 
@@ -604,7 +610,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.on("tool_call", (event, ctx) => {
+	pi.on("tool_call", async (event, ctx) => {
 		if (state.phase === "inactive") return;
 
 		if (isToolCallEventType("bash", event)) {
@@ -630,15 +636,23 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			return;
 		}
 
-		const allowed = new Set<string>([
-			...BUILTIN_READ_ONLY_TOOLS,
-			ASK_USER_QUESTION_TOOL_NAME,
-			EXIT_PLAN_MODE_TOOL_NAME,
-		]);
-		if (!allowed.has(event.toolName)) {
+		if (PLAN_ALWAYS_ALLOWED_TOOLS.has(event.toolName)) return;
+
+		if (!ctx.hasUI) {
 			return {
-					block: true,
-					reason: `Tool ${event.toolName} is unavailable in plan mode because it is not known to be read-only.`,
+				block: true,
+				reason: `Plan mode could not verify that ${event.toolName} is read-only, and no interactive approval UI is available.`,
+			};
+		}
+
+		const approved = await ctx.ui.confirm(
+			`Allow ${event.toolName} in plan mode?`,
+			`This tool is not known to be read-only. Allow this invocation?\n\nArguments:\n${buildPlanToolInputPreview(event.input)}`,
+		);
+		if (!approved) {
+			return {
+				block: true,
+				reason: `The user declined ${event.toolName} while plan mode is active.`,
 			};
 		}
 	});
@@ -772,14 +786,14 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			}
 			let deliveredInFreshSession = false;
 			void startFreshSession({
-					parentSession: parentSession ?? undefined,
-					withSession: async (nextCtx) => {
-						deliveredInFreshSession = true;
-						await nextCtx.sendMessage(buildExecutionMessage("Starting implementation with a clean context."), {
-							triggerTurn: true,
-						});
-					},
-				})
+				parentSession: parentSession ?? undefined,
+				withSession: async (nextCtx) => {
+					deliveredInFreshSession = true;
+					await nextCtx.sendMessage(buildExecutionMessage("Starting implementation with a clean context."), {
+						triggerTurn: true,
+					});
+				},
+			})
 				.then((result) => {
 					if (result.cancelled || !deliveredInFreshSession) {
 						deliverInCurrentSession(
