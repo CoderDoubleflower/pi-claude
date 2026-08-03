@@ -8,6 +8,13 @@ on:
       - scripts/apply-plan-mode-readonly-fix.py
       - scripts/plan-mode-shell-policy.ts.tmp
       - .github/workflows/apply-plan-mode-readonly-fix.yml
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 permissions:
   contents: write
