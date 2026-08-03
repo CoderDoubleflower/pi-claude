@@ -24,12 +24,12 @@ jobs:
       - name: Wait for publish workflow
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TARGET_SHA: d5563ed8a5f794b87f59de92e7a5e52319b0aa8d
+          TARGET_SHA: 2c6d4ff2e621863d3c454c2fef49cdaaad579575
         shell: bash
         run: |
           run_id=""
           for _ in $(seq 1 60); do
-            run_id=$(gh run list --workflow publish-npm.yml --event workflow_dispatch --limit 20 --json databaseId,headSha --jq '.[] | select(.headSha == env.TARGET_SHA) | .databaseId' | head -n 1)
+            run_id=$(gh run list -R CoderDoubleflower/pi-claude --workflow publish-npm.yml --event workflow_dispatch --limit 20 --json databaseId,headSha --jq ".[] | select(.headSha == \"$TARGET_SHA\") | .databaseId" | head -n 1)
             if [ -n "$run_id" ]; then
               break
             fi
@@ -40,7 +40,7 @@ jobs:
             exit 1
           fi
           echo "Monitoring publish workflow run $run_id"
-          gh run watch "$run_id" --exit-status
+          gh run watch -R CoderDoubleflower/pi-claude "$run_id" --exit-status
 
       - name: Remove temporary release workflows
         shell: bash
