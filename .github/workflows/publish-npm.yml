@@ -123,6 +123,46 @@ jobs:
       - name: Validate npm package contents
         run: npm pack --dry-run --ignore-scripts --workspace=@doubleflower/pi-claude
 
+      - name: Smoke-test packed CLI startup
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          pack_dir="$RUNNER_TEMP/pi-claude-pack"
+          install_prefix="$RUNNER_TEMP/pi-claude-smoke-prefix"
+          smoke_home="$RUNNER_TEMP/pi-claude-smoke-home"
+          mkdir -p "$pack_dir" "$install_prefix" "$smoke_home"
+
+          package_file="$(npm pack --ignore-scripts --workspace=@doubleflower/pi-claude --pack-destination "$pack_dir" | tail -n 1)"
+          npm install --global --ignore-scripts --prefix "$install_prefix" "$pack_dir/$package_file"
+
+          cli="$install_prefix/bin/pi-claude"
+          "$cli" --version
+
+          set +e
+          startup_output="$(
+            timeout --signal=INT --kill-after=5s 4s \
+              script --quiet --return --command \
+                "env HOME='$smoke_home' TERM=xterm-256color PI_OFFLINE=1 '$cli'" \
+                /dev/null 2>&1
+          )"
+          startup_status=$?
+          set -e
+
+          printf '%s\n' "$startup_output"
+
+          if grep -Eiq \
+            'uncaughtException|does not provide an export|ERR_MODULE_NOT_FOUND|Cannot find package|is not a function|TypeError:|ReferenceError:|SyntaxError:' \
+            <<<"$startup_output"; then
+            echo '::error::The packed CLI crashed during interactive startup.'
+            exit 1
+          fi
+
+          if [[ $startup_status -ne 0 && $startup_status -ne 124 && $startup_status -ne 130 && $startup_status -ne 143 ]]; then
+            echo "::error::The packed CLI exited unexpectedly with status $startup_status."
+            exit "$startup_status"
+          fi
+
       - name: Check npm registry state
         id: registry
         shell: bash
@@ -148,6 +188,7 @@ jobs:
           if ! git diff --quiet --exit-code; then
             git add -A
             git commit -m "Release pi-claude v${RELEASE_VERSION}"
+            git pull --rebase origin main
             git push origin HEAD:main
           else
             echo "No release metadata changes to commit."
