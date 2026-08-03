@@ -35,6 +35,7 @@ jobs:
           cache: npm
 
       - run: npm ci --ignore-scripts
+      - run: npm run hydrate:model-data
       - run: python3 scripts/apply-plan-mode-readonly-fix.py
       - run: npx biome check --write packages/coding-agent/src/extensions/plan-mode/index.ts packages/coding-agent/src/extensions/plan-mode/shell-policy.ts packages/coding-agent/test/plan-mode.test.ts
       - run: npm --prefix packages/coding-agent test -- test/plan-mode.test.ts
