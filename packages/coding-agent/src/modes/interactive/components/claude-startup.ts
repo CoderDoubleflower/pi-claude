@@ -104,7 +104,11 @@ function renderTitle(appName: string, version: string, width: number): string {
  * stack the same content so no row exceeds the available viewport width.
  */
 export class ClaudeStartupComponent implements Component {
-	constructor(private readonly getSnapshot: () => ClaudeStartupSnapshot) {}
+	private readonly getSnapshot: () => ClaudeStartupSnapshot;
+
+	constructor(getSnapshot: () => ClaudeStartupSnapshot) {
+		this.getSnapshot = getSnapshot;
+	}
 
 	render(width: number): string[] {
 		if (width <= 0) return [];
@@ -128,5 +132,9 @@ export class ClaudeStartupComponent implements Component {
 
 		const gap = " ".repeat(INFO_GAP);
 		return clawdRows.map((row, index) => `${row}${gap}${infoRows[index] ?? ""}`);
+	}
+
+	invalidate(): void {
+		// Snapshot data is read on every render, so there is no cache to clear.
 	}
 }
