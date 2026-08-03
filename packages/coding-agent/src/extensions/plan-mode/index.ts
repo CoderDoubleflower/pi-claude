@@ -501,11 +501,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 					};
 					persistState();
 					return textResult(
-						"User approved the plan and requested a clean execution context. End this turn now; implementation will start after compaction.",
+						"User approved the plan and requested a clean execution context. End this turn now; implementation will start in a fresh session.",
 						{
 							kind: "approved-clear",
 							title: "User approved Claude's plan",
-							subtitle: "Context will be compacted before implementation.",
+							subtitle: "Context will be cleared before implementation.",
 							planPath: state.planPath,
 							plan,
 						},
@@ -726,6 +726,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (state.phase !== "awaiting-clear-context" || !state.pendingExecution) return;
 		const pending = state.pendingExecution;
 		const savedTools = state.toolsBeforePlan;
+		const parentSession = ctx.sessionManager.getSessionFile();
 		state = {
 			...state,
 			phase: "inactive",
@@ -740,32 +741,54 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		persistState();
 		updateStatus(ctx);
 
-		let delivered = false;
-		const deliver = () => {
-			if (delivered) return;
-			delivered = true;
-			pi.sendMessage(
-				{
-					customType: PLAN_MODE_EXECUTION_TYPE,
-					content: buildApprovedExecutionPrompt(pending.planPath, pending.plan),
-					display: true,
-					details: {
-						kind: "approved",
-						title: "User approved Claude's plan",
-						subtitle: "Starting implementation with a compacted context.",
-						planPath: pending.planPath,
-						plan: pending.plan,
-					} satisfies PlanRenderDetails,
-				},
-				{ triggerTurn: true },
-			);
+		const buildExecutionMessage = (subtitle: string) => ({
+			customType: PLAN_MODE_EXECUTION_TYPE,
+			content: buildApprovedExecutionPrompt(pending.planPath, pending.plan),
+			display: true,
+			details: {
+				kind: "approved",
+				title: "User approved Claude's plan",
+				subtitle,
+				planPath: pending.planPath,
+				plan: pending.plan,
+			} satisfies PlanRenderDetails,
+		});
+		const deliverInCurrentSession = (subtitle: string) => {
+			try {
+				pi.sendMessage(buildExecutionMessage(subtitle), { triggerTurn: true });
+			} catch {
+				return;
+			}
 		};
 
-		ctx.compact({
-			customInstructions: `Preserve the approved implementation plan at ${pending.planPath}, the user's requirements, critical file paths, and unresolved risks. Remove exploratory noise so implementation can begin immediately.`,
-			onComplete: deliver,
-			onError: deliver,
-		});
+		// Session replacement invalidates this extension runner. Defer it until the
+		// current agent_settled event has fully unwound, then do all post-switch work
+		// through the fresh context supplied to withSession.
+		setTimeout(() => {
+			let deliveredInFreshSession = false;
+			void ctx
+				.newSession({
+					parentSession: parentSession ?? undefined,
+					withSession: async (nextCtx) => {
+						deliveredInFreshSession = true;
+						await nextCtx.sendMessage(buildExecutionMessage("Starting implementation with a clean context."), {
+							triggerTurn: true,
+						});
+					},
+				})
+				.then((result) => {
+					if (result.cancelled || !deliveredInFreshSession) {
+						deliverInCurrentSession(
+							result.cancelled
+								? "Context clear was cancelled; starting implementation in the current context."
+								: "Context clear is unavailable; starting implementation in the current context.",
+						);
+					}
+				})
+				.catch(() => {
+					deliverInCurrentSession("Context clear failed; starting implementation in the current context.");
+				});
+		}, 0);
 	});
 
 	pi.on("session_compact", () => {
