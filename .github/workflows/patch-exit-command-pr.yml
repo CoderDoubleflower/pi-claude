@@ -1,0 +1,60 @@
+name: Patch exit command PR
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'feat/exit-command-alias'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out pull request branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Apply implementation
+        run: node scripts/patch-exit-command.mjs
+
+      - name: Run repository checks
+        run: npm run check
+
+      - name: Run focused regression test
+        working-directory: packages/coding-agent
+        run: node ../../node_modules/vitest/dist/cli.js --run test/slash-commands.test.ts
+
+      - name: Commit implementation
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git status --short
+          git add packages/coding-agent/src/core/slash-commands.ts
+          git add packages/coding-agent/src/modes/interactive/interactive-mode.ts
+          git add packages/coding-agent/test/slash-commands.test.ts
+          git add packages/coding-agent/docs/usage.md
+          git add packages/coding-agent/CHANGELOG.md
+          git add scripts/patch-exit-command.mjs
+          git add .github/workflows/patch-exit-command.yml
+          git commit -m "feat(coding-agent): add exit command alias"
+          git push origin "HEAD:${HEAD_BRANCH}"
