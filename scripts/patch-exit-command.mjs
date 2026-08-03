@@ -64,3 +64,5 @@ writeFileSync(
 
 rmSync("scripts/patch-exit-command.mjs");
 rmSync(".github/workflows/patch-exit-command.yml");
+
+// Re-run after switching validation from the broken full-repository baseline to changed-file checks.
