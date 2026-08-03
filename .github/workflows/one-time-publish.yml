@@ -1,0 +1,33 @@
+name: One-time npm publish trigger
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/one-time-publish.yml
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch patch release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run publish-npm.yml --repo "$GITHUB_REPOSITORY" --ref main -f retry_current=false -f bump=patch
+
+      - name: Remove one-time trigger
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          path='.github/workflows/one-time-publish.yml'
+          sha="$(gh api "repos/$GITHUB_REPOSITORY/contents/$path?ref=main" --jq .sha)"
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/contents/$path" \
+            -f message='chore: remove one-time publish trigger' \
+            -f sha="$sha" \
+            -f branch=main
