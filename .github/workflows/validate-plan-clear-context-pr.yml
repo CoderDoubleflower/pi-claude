@@ -33,15 +33,15 @@ jobs:
             packages/coding-agent/src/extensions/plan-mode/index.ts \
             packages/coding-agent/test/plan-mode-clear-context-termination.test.ts
 
+      - name: Build monorepo
+        run: npm run build
+
       - name: Run focused tests
         run: |
           npx vitest --run \
             packages/coding-agent/test/plan-mode-clear-context-termination.test.ts \
             packages/coding-agent/test/plan-mode.test.ts \
             packages/coding-agent/test/plan-mode-shortcut.test.ts
-
-      - name: Build monorepo
-        run: npm run build
 
       - name: Commit formatter output and remove validator
         shell: bash
