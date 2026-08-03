@@ -273,7 +273,9 @@ export class ToolExecutionComponent extends Container {
 	override render(width: number): string[] {
 		const contentWidth = Math.max(1, width - 2);
 		const lines = super.render(contentWidth);
-		const firstContentLine = lines.findIndex((line) => stripAnsi(line).trim().length > 0);
+		const firstContentLine = lines.findIndex(
+			(line) => isTerminalImageSequence(line) || stripAnsi(line).trim().length > 0,
+		);
 		const status = this.isPartial
 			? theme.fg("toolRunning", "●")
 			: this.result?.isError

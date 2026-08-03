@@ -1,4 +1,5 @@
-import type { TUI } from "@earendil-works/pi-tui";
+import { Text, type TUI } from "@earendil-works/pi-tui";
+import type { ToolDefinition } from "../src/core/extensions/types.ts";
 import { describe, expect, it } from "vitest";
 import { ToolExecutionComponent } from "../src/modes/interactive/components/tool-execution.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
@@ -31,5 +32,27 @@ describe("tool execution spacing", () => {
 		});
 
 		expect(component.render(120).map(stripAnsi)).toEqual(["", "● TodoWrite"]);
+	});
+
+	it("preserves terminal-image-only renderer output", () => {
+		const imageSequence = "\x1b]1337;File=name=test.png;inline=1:AAAA\x07";
+		const definition = {
+			renderShell: "self",
+			renderCall: () => new Text(imageSequence, 0, 0),
+		} as unknown as ToolDefinition<any, any>;
+
+		const component = new ToolExecutionComponent(
+			"ImageOnly",
+			"image-only",
+			{},
+			{ showImages: false },
+			definition,
+			ui,
+			process.cwd(),
+		);
+
+		const lines = component.render(120);
+		expect(lines.some((line) => line.includes(imageSequence))).toBe(true);
+		expect(lines.map(stripAnsi).join("\n")).toContain("ImageOnly");
 	});
 });
