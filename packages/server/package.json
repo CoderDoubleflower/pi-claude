@@ -54,7 +54,7 @@
 		"node": ">=22.19.0"
 	},
 	"dependencies": {
-		"@doubleflower/pi-claude": "^0.83.9",
+		"@doubleflower/pi-claude": "^0.83.10",
 		"@earendil-works/pi-ai": "^0.83.0",
 		"@earendil-works/pi-protocol": "^0.83.0"
 	},
