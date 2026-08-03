@@ -488,9 +488,25 @@ function checkGh(tokens: string[]): PlanShellDecision {
 	const group = tokens[1];
 	const action = tokens[2];
 	if (!group || !action) return unsafe("gh requires an explicitly read-only command group and action");
-	return GH_READ_ACTIONS.get(group)?.has(action)
-		? { safe: true }
-		: unsafe(`gh ${group} ${action} is not a recognized read-only operation`);
+	if (!GH_READ_ACTIONS.get(group)?.has(action)) {
+		return unsafe(`gh ${group} ${action} is not a recognized read-only operation`);
+	}
+
+	if (group === "auth" && action === "status") {
+		const args = tokens.slice(3);
+		if (hasOption(args, "-t", "--show-token")) {
+			return unsafe("gh auth status token display is not allowed in plan mode");
+		}
+	}
+
+	return { safe: true };
+}
+
+function checkDockerComposeConfig(tokens: string[]): PlanShellDecision {
+	const args = tokens.slice(3);
+	return hasOption(args, "-o", "--output") || hasLongOption(args, "--lock-image-digests")
+		? unsafe("docker compose config output and lock-file options are not allowed in plan mode")
+		: { safe: true };
 }
 
 function checkDocker(tokens: string[]): PlanShellDecision {
@@ -498,6 +514,7 @@ function checkDocker(tokens: string[]): PlanShellDecision {
 	if (!subcommand) return unsafe("docker requires an explicitly read-only subcommand");
 	if (DOCKER_READ_SUBCOMMANDS.has(subcommand)) return { safe: true };
 	const action = tokens[2];
+	if (subcommand === "compose" && action === "config") return checkDockerComposeConfig(tokens);
 	return action && DOCKER_NESTED_READ_ACTIONS.get(subcommand)?.has(action)
 		? { safe: true }
 		: unsafe(`docker ${subcommand}${action ? ` ${action}` : ""} may change container state`);
