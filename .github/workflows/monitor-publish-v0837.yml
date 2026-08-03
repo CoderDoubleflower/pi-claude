@@ -1,0 +1,54 @@
+name: Monitor pi-claude v0.83.7 publish
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/monitor-publish-v0837.yml
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Wait for publish workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_SHA: d5563ed8a5f794b87f59de92e7a5e52319b0aa8d
+        shell: bash
+        run: |
+          run_id=""
+          for _ in $(seq 1 60); do
+            run_id=$(gh run list --workflow publish-npm.yml --event workflow_dispatch --limit 20 --json databaseId,headSha --jq '.[] | select(.headSha == env.TARGET_SHA) | .databaseId' | head -n 1)
+            if [ -n "$run_id" ]; then
+              break
+            fi
+            sleep 10
+          done
+          if [ -z "$run_id" ]; then
+            echo "No publish-npm workflow run found for $TARGET_SHA" >&2
+            exit 1
+          fi
+          echo "Monitoring publish workflow run $run_id"
+          gh run watch "$run_id" --exit-status
+
+      - name: Remove temporary release workflows
+        shell: bash
+        run: |
+          git fetch origin main
+          git reset --hard origin/main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/trigger-publish-v0837.yml .github/workflows/monitor-publish-v0837.yml
+          git commit -m "chore: remove v0.83.7 release workflows"
+          git push origin HEAD:main
