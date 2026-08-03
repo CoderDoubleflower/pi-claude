@@ -506,16 +506,19 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 						pendingExecution: { plan, planPath: state.planPath! },
 					};
 					persistState();
-					return textResult(
-						"User approved the plan and requested a clean execution context. End this turn now; implementation will start in a fresh session.",
-						{
-							kind: "approved-clear",
-							title: "User approved Claude's plan",
-							subtitle: "Context will be cleared before implementation.",
-							planPath: state.planPath,
-							plan,
-						},
-					);
+					return {
+						...textResult(
+							"User approved the plan and requested a clean execution context. End this turn now; implementation will start in a fresh session.",
+							{
+								kind: "approved-clear",
+								title: "User approved Claude's plan",
+								subtitle: "Context will be cleared before implementation.",
+								planPath: state.planPath,
+								plan,
+							},
+						),
+						terminate: true,
+					};
 				}
 
 				const feedback = await ctx.ui.input("Keep planning", "What should Claude change? (optional)");
