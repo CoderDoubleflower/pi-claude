@@ -4,6 +4,7 @@ import type { AgentSession } from "../../../core/agent-session.ts";
 import { areExperimentalFeaturesEnabled } from "../../../core/experimental.ts";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
 import { addUsageToTotals, createUsageTotals } from "../../../core/usage-totals.ts";
+import { installClaudeStartupHeaderUpgrade } from "./claude-startup-compat.ts";
 import { theme } from "../theme/theme.ts";
 
 /**
@@ -51,10 +52,12 @@ export class FooterComponent implements Component {
 	private autoCompactEnabled = true;
 	private session: AgentSession;
 	private footerData: ReadonlyFooterDataProvider;
+	private startupHeaderUpgradeCleanup: (() => void) | undefined;
 
 	constructor(session: AgentSession, footerData: ReadonlyFooterDataProvider) {
 		this.session = session;
 		this.footerData = footerData;
+		this.startupHeaderUpgradeCleanup = installClaudeStartupHeaderUpgrade(() => this.session);
 	}
 
 	setSession(session: AgentSession): void {
@@ -78,7 +81,8 @@ export class FooterComponent implements Component {
 	 * Git watcher cleanup now handled by provider.
 	 */
 	dispose(): void {
-		// Git watcher cleanup handled by provider
+		this.startupHeaderUpgradeCleanup?.();
+		this.startupHeaderUpgradeCleanup = undefined;
 	}
 
 	render(width: number): string[] {
