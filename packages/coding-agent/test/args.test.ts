@@ -329,28 +329,39 @@ describe("parseArgs", () => {
 		});
 	});
 
-	describe("--ui-mode flag", () => {
-		test.each(["regular", "fullscreen"] as const)("parses %s mode", (mode) => {
-			const result = parseArgs(["--ui-mode", mode]);
-			expect(result.uiMode).toBe(mode);
+	describe("fixed fullscreen UI", () => {
+		test("accepts the legacy fullscreen value as a no-op", () => {
+			const result = parseArgs(["--ui-mode", "fullscreen"]);
+			expect(result.diagnostics).toEqual([]);
+			expect(result).not.toHaveProperty("uiMode");
 		});
 
-		test("rejects invalid modes", () => {
-			const result = parseArgs(["--ui-mode", "other"]);
+		test("rejects attempts to select regular mode", () => {
+			const result = parseArgs(["--ui-mode", "regular"]);
 			expect(result.diagnostics).toEqual([
-				{ type: "error", message: 'Invalid UI mode "other". Valid values: regular, fullscreen' },
+				{ type: "error", message: "--ui-mode is unavailable; pi-claude always uses fullscreen" },
 			]);
 		});
 
-		test("requires a mode", () => {
-			const result = parseArgs(["--ui-mode"]);
-			expect(result.diagnostics).toEqual([{ type: "error", message: "--ui-mode requires regular or fullscreen" }]);
+		test("rejects other UI mode values", () => {
+			const result = parseArgs(["--ui-mode", "other"]);
+			expect(result.diagnostics).toEqual([
+				{ type: "error", message: "--ui-mode is unavailable; pi-claude always uses fullscreen" },
+			]);
 		});
 
-		test("accepts --alt as a hidden fullscreen shortcut", () => {
+		test("requires a value for the legacy UI mode flag", () => {
+			const result = parseArgs(["--ui-mode"]);
+			expect(result.diagnostics).toEqual([
+				{ type: "error", message: "--ui-mode is unavailable; pi-claude always uses fullscreen" },
+			]);
+		});
+
+		test("accepts --alt as a compatibility no-op", () => {
 			const result = parseArgs(["--alt"]);
-			expect(result.uiMode).toBe("fullscreen");
+			expect(result.diagnostics).toEqual([]);
 			expect(result.unknownFlags.has("alt")).toBe(false);
+			expect(result).not.toHaveProperty("uiMode");
 		});
 	});
 
