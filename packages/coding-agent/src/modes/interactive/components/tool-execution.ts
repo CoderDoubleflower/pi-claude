@@ -7,10 +7,10 @@ import { convertToPng } from "../../../utils/image-convert.ts";
 import { theme } from "../theme/theme.ts";
 
 const TOOL_OUTPUT_PREVIEW_LINES = 5;
-const BACKGROUND_TOOL_NAMES = new Set(["AskUserQuestion", "EnterPlanMode", "ExitPlanMode", "TodoWrite"]);
+const HIDDEN_TOOL_CALL_NAMES = new Set(["AskUserQuestion", "EnterPlanMode", "ExitPlanMode", "TodoWrite"]);
 
-function isBackgroundTool(toolName: string): boolean {
-	return BACKGROUND_TOOL_NAMES.has(toolName);
+function hidesToolCall(toolName: string): boolean {
+	return HIDDEN_TOOL_CALL_NAMES.has(toolName);
 }
 
 function isTerminalImageSequence(line: string): boolean {
@@ -276,7 +276,13 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	override render(width: number): string[] {
-		if (isBackgroundTool(this.toolName)) return [];
+		if (hidesToolCall(this.toolName)) {
+			const lines = super.render(width);
+			const hasVisibleContent = lines.some(
+				(line) => isTerminalImageSequence(line) || stripAnsi(line).trim().length > 0,
+			);
+			return hasVisibleContent ? lines : [];
+		}
 
 		const contentWidth = Math.max(1, width - 2);
 		const lines = super.render(contentWidth);
@@ -307,17 +313,19 @@ export class ToolExecutionComponent extends Container {
 			const renderContainer = this.getRenderShell() === "self" ? this.selfRenderContainer : this.contentBox;
 			renderContainer.clear();
 
-			const callRenderer = this.getCallRenderer();
-			if (!callRenderer) {
-				renderContainer.addChild(this.getDisplayedCallComponent(this.createCallFallback()));
-			} else {
-				try {
-					const component = callRenderer(this.args, theme, this.getRenderContext(this.callRendererComponent));
-					this.callRendererComponent = component;
-					renderContainer.addChild(this.getDisplayedCallComponent(component));
-				} catch {
-					this.callRendererComponent = undefined;
+			if (!hidesToolCall(this.toolName)) {
+				const callRenderer = this.getCallRenderer();
+				if (!callRenderer) {
 					renderContainer.addChild(this.getDisplayedCallComponent(this.createCallFallback()));
+				} else {
+					try {
+						const component = callRenderer(this.args, theme, this.getRenderContext(this.callRendererComponent));
+						this.callRendererComponent = component;
+						renderContainer.addChild(this.getDisplayedCallComponent(component));
+					} catch {
+						this.callRendererComponent = undefined;
+						renderContainer.addChild(this.getDisplayedCallComponent(this.createCallFallback()));
+					}
 				}
 			}
 
@@ -342,7 +350,10 @@ export class ToolExecutionComponent extends Container {
 					}
 				}
 
-				if (this.isPartial) {
+				if (hidesToolCall(this.toolName)) {
+					const hiddenResult = renderedResult ?? this.createOutputTextComponent();
+					if (hiddenResult) renderContainer.addChild(hiddenResult);
+				} else if (this.isPartial) {
 					const textResult = this.createOutputTextComponent();
 					if (this.expanded) {
 						const expandedResult = renderedResult ?? textResult;
