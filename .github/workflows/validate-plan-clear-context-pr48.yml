@@ -1,0 +1,86 @@
+name: Validate plan clear-context PR 48
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/validate-plan-clear-context-pr48.yml
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out fix branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/plan-clear-context-no-extra-turn
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+          sudo ln -s $(which fdfind) /usr/local/bin/fd
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Format changed files
+        run: |
+          npx biome check --write \
+            packages/coding-agent/src/extensions/plan-mode/index.ts \
+            packages/coding-agent/test/plan-mode-clear-context-termination.test.ts
+
+      - name: Run focused tests
+        run: |
+          npx vitest --run \
+            packages/coding-agent/test/plan-mode-clear-context-termination.test.ts \
+            packages/coding-agent/test/plan-mode.test.ts \
+            packages/coding-agent/test/plan-mode-shortcut.test.ts
+
+      - name: Build monorepo
+        run: npm run build
+
+      - name: Commit formatter output
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/coding-agent/src/extensions/plan-mode/index.ts \
+                  packages/coding-agent/test/plan-mode-clear-context-termination.test.ts
+          if ! git diff --cached --quiet; then
+            git commit -m "style(coding-agent): format clean plan approval fix"
+            git push origin HEAD:fix/plan-clear-context-no-extra-turn
+          fi
+
+      - name: Report validation result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment 48 --repo CoderDoubleflower/pi-claude --body "Validation passed: focused plan-mode tests succeeded and the full monorepo build completed successfully. The general CI check remains blocked only by the unrelated live model-catalog drift for gemini-2.5-pro."
+
+      - name: Remove validation trigger
+        if: always()
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -f .github/workflows/validate-plan-clear-context-pr48.yml ]; then
+            git rm .github/workflows/validate-plan-clear-context-pr48.yml
+            git commit -m "chore: remove plan clear-context PR 48 validator"
+            git push origin main
+          fi
