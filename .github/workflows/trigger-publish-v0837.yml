@@ -18,4 +18,4 @@ jobs:
       - name: Dispatch tested patch release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run publish-npm.yml --ref main -f retry_current=false -f bump=patch
+        run: gh workflow run -R CoderDoubleflower/pi-claude publish-npm.yml --ref main -f retry_current=false -f bump=patch
