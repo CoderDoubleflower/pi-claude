@@ -45,7 +45,7 @@ describe("Claude-style plan mode", () => {
 		expect(builtInExtensions).toContainEqual(expect.objectContaining({ name: "plan-mode", hidden: true }));
 	});
 
-	it("keeps only previously active planning-safe tools and restores the exact normal tool set", () => {
+	it("preserves previously active tools in plan mode and restores the exact normal tool set", () => {
 		const available = [
 			"read",
 			"bash",
@@ -58,17 +58,34 @@ describe("Claude-style plan mode", () => {
 			"EnterPlanMode",
 			"ExitPlanMode",
 			"AskUserQuestion",
-			"dangerous-extension-tool",
+			"external-info-tool",
 		];
-		const normalTools = ["read", "bash", "edit", "write", "TodoWrite", "EnterPlanMode", "AskUserQuestion"];
+		const normalTools = [
+			"read",
+			"bash",
+			"edit",
+			"write",
+			"TodoWrite",
+			"EnterPlanMode",
+			"AskUserQuestion",
+			"external-info-tool",
+		];
 		const planning = getPlanModeTools(normalTools, available);
 
-		expect(planning).toEqual(["read", "bash", "edit", "write", "AskUserQuestion", "ExitPlanMode"]);
+		expect(planning).toEqual([
+			"read",
+			"bash",
+			"edit",
+			"write",
+			"TodoWrite",
+			"AskUserQuestion",
+			"external-info-tool",
+			"ExitPlanMode",
+		]);
+		expect(planning).not.toContain("EnterPlanMode");
 		expect(planning).not.toContain("grep");
 		expect(planning).not.toContain("find");
 		expect(planning).not.toContain("ls");
-		expect(planning).not.toContain("TodoWrite");
-		expect(planning).not.toContain("dangerous-extension-tool");
 		expect(getRestoredTools(normalTools, planning, available)).toEqual(normalTools);
 
 		expect(getPlanModeTools(["read", "EnterPlanMode", "AskUserQuestion"], available)).toEqual([
@@ -134,6 +151,13 @@ describe("Claude-style plan mode", () => {
 		"git config --get core.editor",
 		"npm view typebox version",
 		"node --version",
+		"rg plan packages/coding-agent/src | head -40",
+		"git show HEAD:package.json | jq '.scripts'",
+		"git status --short && git diff --stat",
+		"pwd; git status --short",
+		"sed -n '1,40p' packages/coding-agent/src/extensions/plan-mode/index.ts",
+		"gh pr view 45 --json title,state",
+		"docker inspect pi-claude",
 	])("allows read-only command: %s", (command) => {
 		expect(checkPlanReadOnlyCommand(command)).toEqual({ safe: true });
 	});
@@ -186,6 +210,11 @@ describe("Claude-style plan mode", () => {
 		"cat input > output",
 		"echo $(touch output)",
 		"rg foo | tee output",
+		"git status --short && git checkout main",
+		"sed -i 's/a/b/' file.txt",
+		"sed -n '1w output' file.txt",
+		"gh pr merge 45",
+		"docker exec pi-claude touch output",
 		String.raw`echo \\; touch output`,
 		'python -c \'open("output", "w").write("x")\'',
 	])("blocks state-changing command: %s", (command) => {
@@ -234,6 +263,12 @@ describe("Claude-style plan mode", () => {
 		expect(prompt).toContain("AskUserQuestion");
 		expect(prompt).toContain(EXIT_PLAN_MODE_TOOL_NAME);
 		expect(buildSparsePlanModePrompt("/tmp/example-plan.md")).toContain("Never request plan approval");
+	});
+
+	it("does not blanket-block custom tools after entering plan mode", () => {
+		const source = readFileSync(new URL("../src/extensions/plan-mode/index.ts", import.meta.url), "utf8");
+		expect(source).toContain("Keep extension, MCP, web, LSP, and other custom tools available");
+		expect(source).not.toContain("not known to be read-only");
 	});
 
 	it("uses a guarded fresh session instead of compaction for clear-context plan approval", () => {
