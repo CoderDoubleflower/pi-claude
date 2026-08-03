@@ -12,6 +12,15 @@ function replaceOnce(filePath, search, replacement) {
 	writeFileSync(filePath, `${source.slice(0, firstIndex)}${replacement}${source.slice(firstIndex + search.length)}`);
 }
 
+function replaceFirst(filePath, search, replacement) {
+	const source = readFileSync(filePath, "utf8");
+	const firstIndex = source.indexOf(search);
+	if (firstIndex === -1) {
+		throw new Error(`Expected text not found in ${filePath}: ${JSON.stringify(search)}`);
+	}
+	writeFileSync(filePath, `${source.slice(0, firstIndex)}${replacement}${source.slice(firstIndex + search.length)}`);
+}
+
 const slashCommandsPath = "packages/coding-agent/src/core/slash-commands.ts";
 replaceOnce(
 	slashCommandsPath,
@@ -42,7 +51,7 @@ replaceOnce(
 	"| `/quit` | Quit pi |",
 	"| `/exit`, `/quit` | Quit pi |",
 );
-replaceOnce(
+replaceFirst(
 	"packages/coding-agent/CHANGELOG.md",
 	"### Added\n\n",
 	"### Added\n\n- Added `/exit` as an alias for `/quit`.\n",
