@@ -55,3 +55,5 @@ writeFileSync(
 
 rmSync("scripts/patch-exit-command.mjs");
 rmSync(".github/workflows/patch-exit-command.yml");
+
+// This no-op change exists only to trigger the branch workflow after it was installed.
