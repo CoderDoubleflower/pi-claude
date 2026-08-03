@@ -1,0 +1,122 @@
+name: Apply plan clear-context termination fix v3
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/trigger-plan-clear-context-termination-v3.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out fix branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/plan-clear-context-no-extra-turn
+          fetch-depth: 0
+
+      - name: Apply source and test changes
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          from textwrap import dedent
+
+          plan_path = Path("packages/coding-agent/src/extensions/plan-mode/index.ts")
+          text = plan_path.read_text()
+          start_marker = '\t\t\t\tif (choice === "Yes, clear context and start implementing") {'
+          end_marker = '\n\n\t\t\t\tconst feedback ='
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          branch = text[start:end]
+
+          if "terminate: true" not in branch:
+              return_marker = '\t\t\t\t\treturn textResult('
+              return_index = branch.index(return_marker)
+              branch = (
+                  branch[:return_index]
+                  + '\t\t\t\t\treturn {\n\t\t\t\t\t\t...textResult('
+                  + branch[return_index + len(return_marker):]
+              )
+              close_marker = '\n\t\t\t\t\t);'
+              close_index = branch.rfind(close_marker)
+              if close_index < 0:
+                  raise SystemExit("Could not find clear-context textResult closing marker")
+              branch = (
+                  branch[:close_index]
+                  + '\n\t\t\t\t\t\t),\n\t\t\t\t\t\tterminate: true,\n\t\t\t\t\t};'
+                  + branch[close_index + len(close_marker):]
+              )
+              text = text[:start] + branch + text[end:]
+              plan_path.write_text(text)
+
+          test_path = Path("packages/coding-agent/test/plan-mode-clear-context-termination.test.ts")
+          test_path.write_text(
+              dedent(
+                  '''
+                  import { readFileSync } from "node:fs";
+                  import { describe, expect, it } from "vitest";
+
+                  describe("clear-context plan approval", () => {
+                  \tit("terminates the old agent run before starting the fresh execution session", () => {
+                  \t\tconst source = readFileSync(new URL("../src/extensions/plan-mode/index.ts", import.meta.url), "utf8");
+                  \t\tconst start = source.indexOf('if (choice === "Yes, clear context and start implementing")');
+                  \t\tconst end = source.indexOf("const feedback =", start);
+
+                  \t\texpect(start).toBeGreaterThanOrEqual(0);
+                  \t\texpect(end).toBeGreaterThan(start);
+
+                  \t\tconst clearContextBranch = source.slice(start, end);
+                  \t\texpect(clearContextBranch).toContain('phase: "awaiting-clear-context"');
+                  \t\texpect(clearContextBranch).toContain("terminate: true");
+                  \t});
+                  });
+                  '''
+              ).lstrip()
+          )
+          PY
+
+          rm -f .github/workflows/apply-plan-clear-context-termination.yml
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Run focused plan-mode tests
+        run: npx vitest --run packages/coding-agent/test/plan-mode-clear-context-termination.test.ts packages/coding-agent/test/plan-mode.test.ts
+
+      - name: Build monorepo
+        run: npm run build
+
+      - name: Commit validated fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(coding-agent): stop old turn after clean plan approval"
+          git push origin HEAD:fix/plan-clear-context-no-extra-turn
+
+      - name: Remove trigger workflow from main
+        if: always()
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -f .github/workflows/trigger-plan-clear-context-termination-v3.yml ]; then
+            git rm .github/workflows/trigger-plan-clear-context-termination-v3.yml
+            git commit -m "chore: remove plan clear-context termination v3 trigger"
+            git push origin main
+          fi
