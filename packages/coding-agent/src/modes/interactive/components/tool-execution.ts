@@ -7,6 +7,11 @@ import { convertToPng } from "../../../utils/image-convert.ts";
 import { theme } from "../theme/theme.ts";
 
 const TOOL_OUTPUT_PREVIEW_LINES = 5;
+const BACKGROUND_TOOL_NAMES = new Set(["AskUserQuestion", "EnterPlanMode", "ExitPlanMode", "TodoWrite"]);
+
+function isBackgroundTool(toolName: string): boolean {
+	return BACKGROUND_TOOL_NAMES.has(toolName);
+}
 
 function isTerminalImageSequence(line: string): boolean {
 	return line.includes("\x1b_G") || line.includes("\x1b]1337;File=");
@@ -271,6 +276,8 @@ export class ToolExecutionComponent extends Container {
 	}
 
 	override render(width: number): string[] {
+		if (isBackgroundTool(this.toolName)) return [];
+
 		const contentWidth = Math.max(1, width - 2);
 		const lines = super.render(contentWidth);
 		const firstContentLine = lines.findIndex(
