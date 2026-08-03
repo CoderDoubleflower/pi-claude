@@ -1,0 +1,62 @@
+name: Release pi-claude v0.83.8
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/release-v0838.yml
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout trigger commit
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Dispatch patch release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run -R CoderDoubleflower/pi-claude publish-npm.yml --ref main -f retry_current=false -f bump=patch
+
+      - name: Wait for publish workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TRIGGER_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_id=""
+          for _ in $(seq 1 60); do
+            runs="$(gh run list -R CoderDoubleflower/pi-claude --workflow publish-npm.yml --event workflow_dispatch --limit 20 --json databaseId,headSha)"
+            run_id="$(jq -r --arg sha "$TRIGGER_SHA" '.[] | select(.headSha == $sha) | .databaseId' <<<"$runs" | head -n 1)"
+            if [[ -n "$run_id" && "$run_id" != "null" ]]; then
+              break
+            fi
+            sleep 10
+          done
+          if [[ -z "$run_id" || "$run_id" == "null" ]]; then
+            echo "No publish workflow run found for trigger commit $TRIGGER_SHA" >&2
+            exit 1
+          fi
+          echo "Watching publish workflow run $run_id"
+          gh run watch -R CoderDoubleflower/pi-claude "$run_id" --exit-status
+
+      - name: Remove temporary release workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git reset --hard origin/main
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/release-v0838.yml
+          git commit -m "chore: remove v0.83.8 release workflow"
+          git push origin HEAD:main
