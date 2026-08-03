@@ -1,0 +1,72 @@
+name: Apply fullscreen-only UI on PR
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'fix/fullscreen-only-ui'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Extract and apply source patch
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/apply-fullscreen-only.yml').read_text()
+          start_marker = "          python <<'PY'\n"
+          end_marker = "\n          PY"
+          start = workflow.index(start_marker) + len(start_marker)
+          end = workflow.index(end_marker, start)
+          script = textwrap.dedent(workflow[start:end])
+          Path('/tmp/apply-fullscreen-only.py').write_text(script)
+          PY
+          python /tmp/apply-fullscreen-only.py
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Format and lint changed files
+        run: >-
+          npx biome check --write --error-on-warnings
+          packages/coding-agent/src/cli/args.ts
+          packages/coding-agent/src/main.ts
+          packages/coding-agent/src/core/settings-manager.ts
+          packages/coding-agent/src/modes/interactive/components/settings-selector.ts
+          packages/coding-agent/src/modes/interactive/interactive-mode.ts
+          packages/coding-agent/test/args.test.ts
+          packages/coding-agent/test/settings-manager.test.ts
+
+      - name: Run focused tests
+        run: npm --workspace=@doubleflower/pi-claude test -- test/args.test.ts test/settings-manager.test.ts
+
+      - name: Type-check coding agent
+        run: npx tsgo --noEmit -p packages/coding-agent/tsconfig.json
+
+      - name: Commit implementation
+        shell: bash
+        run: |
+          rm .github/workflows/apply-fullscreen-only.yml
+          rm .github/workflows/apply-fullscreen-only-pr.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(coding-agent): lock UI to fullscreen [fullscreen-only applied]"
+          git push origin HEAD:${{ github.head_ref }}
