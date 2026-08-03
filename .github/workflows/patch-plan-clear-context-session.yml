@@ -1,0 +1,283 @@
+name: Apply plan clear-context session patch
+
+on:
+  push:
+    branches:
+      - feat/plan-clear-context-session
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/plan-clear-context-session
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Apply source and regression-test changes
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: Path, old: str, new: str) -> None:
+              text = path.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one match in {path}, found {count}")
+              path.write_text(text.replace(old, new, 1))
+
+          types = Path("packages/coding-agent/src/core/extensions/types.ts")
+          replace_once(
+              types,
+              '''\t/** Trigger compaction without awaiting completion. */
+\tcompact(options?: CompactOptions): void;
+\t/** Get the current effective system prompt. */
+''',
+              '''\t/** Trigger compaction without awaiting completion. */
+\tcompact(options?: CompactOptions): void;
+\t/**
+\t * Start a fresh session after an explicit user-approved transition.
+\t * Event handlers must only call this after the agent has settled; post-replacement
+\t * work belongs in withSession because the current extension context becomes stale.
+\t */
+\tnewSession(options?: {
+\t\tparentSession?: string;
+\t\tsetup?: (sessionManager: SessionManager) => Promise<void>;
+\t\twithSession?: (ctx: ReplacedSessionContext) => Promise<void>;
+\t}): Promise<{ cancelled: boolean }>;
+\t/** Get the current effective system prompt. */
+''',
+          )
+
+          runner = Path("packages/coding-agent/src/core/extensions/runner.ts")
+          replace_once(
+              runner,
+              '''\t\t\tcompact: (options) => {
+\t\t\t\trunner.assertActive();
+\t\t\t\trunner.compactFn(options);
+\t\t\t},
+\t\t\tgetSystemPrompt: () => {
+''',
+              '''\t\t\tcompact: (options) => {
+\t\t\t\trunner.assertActive();
+\t\t\t\trunner.compactFn(options);
+\t\t\t},
+\t\t\tnewSession: (options) => {
+\t\t\t\trunner.assertActive();
+\t\t\t\treturn runner.newSessionHandler(options);
+\t\t\t},
+\t\t\tgetSystemPrompt: () => {
+''',
+          )
+
+          plan = Path("packages/coding-agent/src/extensions/plan-mode/index.ts")
+          replace_once(
+              plan,
+              '''\t\t\t\t\treturn textResult(
+\t\t\t\t\t\t"User approved the plan and requested a clean execution context. End this turn now; implementation will start after compaction.",
+\t\t\t\t\t\t{
+\t\t\t\t\t\t\tkind: "approved-clear",
+\t\t\t\t\t\t\ttitle: "User approved Claude's plan",
+\t\t\t\t\t\t\tsubtitle: "Context will be compacted before implementation.",
+''',
+              '''\t\t\t\t\treturn textResult(
+\t\t\t\t\t\t"User approved the plan and requested a clean execution context. End this turn now; implementation will start in a fresh session.",
+\t\t\t\t\t\t{
+\t\t\t\t\t\t\tkind: "approved-clear",
+\t\t\t\t\t\t\ttitle: "User approved Claude's plan",
+\t\t\t\t\t\t\tsubtitle: "Context will be cleared before implementation.",
+''',
+          )
+
+          old_settled = '''\tpi.on("agent_settled", (_event, ctx) => {
+\t\tif (state.phase !== "awaiting-clear-context" || !state.pendingExecution) return;
+\t\tconst pending = state.pendingExecution;
+\t\tconst savedTools = state.toolsBeforePlan;
+\t\tstate = {
+\t\t\t...state,
+\t\t\tphase: "inactive",
+\t\t\ttoolsBeforePlan: undefined,
+\t\t\thasExitedInSession: true,
+\t\t\tneedsExitReminder: false,
+\t\t\treentryPending: false,
+\t\t\tforceFullReminder: false,
+\t\t\tpendingExecution: undefined,
+\t\t};
+\t\trestoreNormalTools(savedTools);
+\t\tpersistState();
+\t\tupdateStatus(ctx);
+
+\t\tlet delivered = false;
+\t\tconst deliver = () => {
+\t\t\tif (delivered) return;
+\t\t\tdelivered = true;
+\t\t\tpi.sendMessage(
+\t\t\t\t{
+\t\t\t\t\tcustomType: PLAN_MODE_EXECUTION_TYPE,
+\t\t\t\t\tcontent: buildApprovedExecutionPrompt(pending.planPath, pending.plan),
+\t\t\t\t\tdisplay: true,
+\t\t\t\t\tdetails: {
+\t\t\t\t\t\tkind: "approved",
+\t\t\t\t\t\ttitle: "User approved Claude's plan",
+\t\t\t\t\t\tsubtitle: "Starting implementation with a compacted context.",
+\t\t\t\t\t\tplanPath: pending.planPath,
+\t\t\t\t\t\tplan: pending.plan,
+\t\t\t\t\t} satisfies PlanRenderDetails,
+\t\t\t\t},
+\t\t\t\t{ triggerTurn: true },
+\t\t\t);
+\t\t};
+
+\t\tctx.compact({
+\t\t\tcustomInstructions: `Preserve the approved implementation plan at ${pending.planPath}, the user's requirements, critical file paths, and unresolved risks. Remove exploratory noise so implementation can begin immediately.`,
+\t\t\tonComplete: deliver,
+\t\t\tonError: deliver,
+\t\t});
+\t});
+'''
+          new_settled = '''\tpi.on("agent_settled", (_event, ctx) => {
+\t\tif (state.phase !== "awaiting-clear-context" || !state.pendingExecution) return;
+\t\tconst pending = state.pendingExecution;
+\t\tconst savedTools = state.toolsBeforePlan;
+\t\tconst parentSession = ctx.sessionManager.getSessionFile();
+\t\tstate = {
+\t\t\t...state,
+\t\t\tphase: "inactive",
+\t\t\ttoolsBeforePlan: undefined,
+\t\t\thasExitedInSession: true,
+\t\t\tneedsExitReminder: false,
+\t\t\treentryPending: false,
+\t\t\tforceFullReminder: false,
+\t\t\tpendingExecution: undefined,
+\t\t};
+\t\trestoreNormalTools(savedTools);
+\t\tpersistState();
+\t\tupdateStatus(ctx);
+
+\t\tconst buildExecutionMessage = (subtitle: string) => ({
+\t\t\tcustomType: PLAN_MODE_EXECUTION_TYPE,
+\t\t\tcontent: buildApprovedExecutionPrompt(pending.planPath, pending.plan),
+\t\t\tdisplay: true,
+\t\t\tdetails: {
+\t\t\t\tkind: "approved",
+\t\t\t\ttitle: "User approved Claude's plan",
+\t\t\t\tsubtitle,
+\t\t\t\tplanPath: pending.planPath,
+\t\t\t\tplan: pending.plan,
+\t\t\t} satisfies PlanRenderDetails,
+\t\t});
+\t\tconst deliverInCurrentSession = (subtitle: string) => {
+\t\t\ttry {
+\t\t\t\tpi.sendMessage(buildExecutionMessage(subtitle), { triggerTurn: true });
+\t\t\t} catch {
+\t\t\t\treturn;
+\t\t\t}
+\t\t};
+
+\t\t// Session replacement invalidates this extension runner. Defer it until the
+\t\t// current agent_settled event has fully unwound, then do all post-switch work
+\t\t// through the fresh context supplied to withSession.
+\t\tsetTimeout(() => {
+\t\t\tlet deliveredInFreshSession = false;
+\t\t\tvoid ctx
+\t\t\t\t.newSession({
+\t\t\t\t\tparentSession: parentSession ?? undefined,
+\t\t\t\t\twithSession: async (nextCtx) => {
+\t\t\t\t\t\tdeliveredInFreshSession = true;
+\t\t\t\t\t\tawait nextCtx.sendMessage(buildExecutionMessage("Starting implementation with a clean context."), {
+\t\t\t\t\t\t\ttriggerTurn: true,
+\t\t\t\t\t\t});
+\t\t\t\t\t},
+\t\t\t\t})
+\t\t\t\t.then((result) => {
+\t\t\t\t\tif (result.cancelled || !deliveredInFreshSession) {
+\t\t\t\t\t\tdeliverInCurrentSession(
+\t\t\t\t\t\t\tresult.cancelled
+\t\t\t\t\t\t\t\t? "Context clear was cancelled; starting implementation in the current context."
+\t\t\t\t\t\t\t\t: "Context clear is unavailable; starting implementation in the current context.",
+\t\t\t\t\t\t);
+\t\t\t\t\t}
+\t\t\t\t})
+\t\t\t\t.catch(() => {
+\t\t\t\t\tdeliverInCurrentSession("Context clear failed; starting implementation in the current context.");
+\t\t\t\t});
+\t\t}, 0);
+\t});
+'''
+          replace_once(plan, old_settled, new_settled)
+
+          test = Path("packages/coding-agent/test/plan-mode.test.ts")
+          replace_once(
+              test,
+              'import { existsSync, mkdtempSync, rmSync } from "node:fs";\n',
+              'import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";\n',
+          )
+          replace_once(
+              test,
+              '''\tit("injects the plan path, hard read-only restriction, and approval protocol", () => {
+\t\tconst prompt = buildFullPlanModePrompt({
+\t\t\tplanPath: "/tmp/example-plan.md",
+\t\t\tplanExists: false,
+\t\t});
+\t\texpect(prompt).toContain("/tmp/example-plan.md");
+\t\texpect(prompt).toContain("only file you may create or modify");
+\t\texpect(prompt).toContain("AskUserQuestion");
+\t\texpect(prompt).toContain(EXIT_PLAN_MODE_TOOL_NAME);
+\t\texpect(buildSparsePlanModePrompt("/tmp/example-plan.md")).toContain("Never request plan approval");
+\t});
+''',
+              '''\tit("injects the plan path, hard read-only restriction, and approval protocol", () => {
+\t\tconst prompt = buildFullPlanModePrompt({
+\t\t\tplanPath: "/tmp/example-plan.md",
+\t\t\tplanExists: false,
+\t\t});
+\t\texpect(prompt).toContain("/tmp/example-plan.md");
+\t\texpect(prompt).toContain("only file you may create or modify");
+\t\texpect(prompt).toContain("AskUserQuestion");
+\t\texpect(prompt).toContain(EXIT_PLAN_MODE_TOOL_NAME);
+\t\texpect(buildSparsePlanModePrompt("/tmp/example-plan.md")).toContain("Never request plan approval");
+\t});
+
+\tit("uses a fresh session instead of compaction for clear-context plan approval", () => {
+\t\tconst source = readFileSync(new URL("../src/extensions/plan-mode/index.ts", import.meta.url), "utf8");
+\t\texpect(source).toContain(".newSession({");
+\t\texpect(source).toContain("Starting implementation with a clean context.");
+\t\texpect(source).not.toContain("ctx.compact({");
+\t\texpect(source).not.toContain("implementation will start after compaction");
+\t\texpect(source).not.toContain("Starting implementation with a compacted context.");
+\t});
+''',
+          )
+          PY
+
+          git rm .github/workflows/patch-plan-clear-context-session.yml
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build
+        run: npm run build
+
+      - name: Run focused plan-mode tests
+        run: npx vitest --run packages/coding-agent/test/plan-mode.test.ts packages/coding-agent/test/plan-mode-shortcut.test.ts
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/coding-agent/src/core/extensions/types.ts \
+                  packages/coding-agent/src/core/extensions/runner.ts \
+                  packages/coding-agent/src/extensions/plan-mode/index.ts \
+                  packages/coding-agent/test/plan-mode.test.ts
+          git commit -m "feat(coding-agent): execute approved plans in a fresh context"
+          git push origin HEAD:feat/plan-clear-context-session
