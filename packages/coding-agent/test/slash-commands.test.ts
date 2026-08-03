@@ -10,7 +10,7 @@ describe("slash commands", () => {
 		expect(isQuitSlashCommand(command)).toBe(false);
 	});
 
-	it("offers both exit spellings in autocomplete", () => {
+	it("registers both exit spellings for autocomplete", () => {
 		const names = BUILTIN_SLASH_COMMANDS.map((command) => command.name);
 		expect(names).toContain("exit");
 		expect(names).toContain("quit");
