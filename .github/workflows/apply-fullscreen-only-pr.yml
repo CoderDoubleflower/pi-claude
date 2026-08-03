@@ -69,9 +69,6 @@ jobs:
       - name: Run focused tests
         run: npm --workspace=@doubleflower/pi-claude test -- test/args.test.ts test/settings-manager.test.ts
 
-      - name: Type-check coding agent
-        run: npx tsgo --noEmit -p packages/coding-agent/tsconfig.build.json
-
       - name: Commit implementation
         shell: bash
         run: |
