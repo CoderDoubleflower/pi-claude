@@ -765,9 +765,13 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		// current agent_settled event has fully unwound, then do all post-switch work
 		// through the fresh context supplied to withSession.
 		setTimeout(() => {
+			const startFreshSession = ctx.newSession;
+			if (!startFreshSession) {
+				deliverInCurrentSession("Context clear is unavailable; starting implementation in the current context.");
+				return;
+			}
 			let deliveredInFreshSession = false;
-			void ctx
-				.newSession({
+			void startFreshSession({
 					parentSession: parentSession ?? undefined,
 					withSession: async (nextCtx) => {
 						deliveredInFreshSession = true;

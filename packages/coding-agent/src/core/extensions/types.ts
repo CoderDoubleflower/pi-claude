@@ -347,7 +347,7 @@ export interface ExtensionContext {
 	 * Event handlers must only call this after the agent has settled; post-replacement
 	 * work belongs in withSession because the current extension context becomes stale.
 	 */
-	newSession(options?: {
+	newSession?(options?: {
 		parentSession?: string;
 		setup?: (sessionManager: SessionManager) => Promise<void>;
 		withSession?: (ctx: ReplacedSessionContext) => Promise<void>;
