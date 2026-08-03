@@ -1,0 +1,78 @@
+name: Apply plan mode Shift+Tab shortcut
+
+on:
+  push:
+    branches:
+      - fix/plan-mode-shift-tab
+    paths:
+      - .github/workflows/apply-plan-shift-tab.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/plan-mode-shift-tab
+          fetch-depth: 0
+
+      - name: Rebind plan mode and add regression coverage
+        shell: bash
+        run: |
+          python <<'PY'
+          from pathlib import Path
+
+          plan_path = Path("packages/coding-agent/src/extensions/plan-mode/index.ts")
+          plan_source = plan_path.read_text()
+          old_plan = 'const PLAN_MODE_SHORTCUT = Key.ctrlAlt("p");'
+          new_plan = 'export const PLAN_MODE_SHORTCUT = Key.shift("tab");'
+          if old_plan not in plan_source:
+              raise SystemExit("Expected plan-mode shortcut declaration was not found")
+          plan_path.write_text(plan_source.replace(old_plan, new_plan, 1))
+
+          keybindings_path = Path("packages/coding-agent/src/core/keybindings.ts")
+          keybindings_source = keybindings_path.read_text()
+          old_binding = '''\t"app.thinking.cycle": {
+          \t\tdefaultKeys: "shift+tab",
+          \t\tdescription: "Cycle thinking level",
+          \t},'''
+          new_binding = '''\t"app.thinking.cycle": {
+          \t\tdefaultKeys: "ctrl+alt+p",
+          \t\tdescription: "Cycle thinking level",
+          \t},'''
+          if old_binding not in keybindings_source:
+              raise SystemExit("Expected thinking-cycle keybinding was not found")
+          keybindings_path.write_text(keybindings_source.replace(old_binding, new_binding, 1))
+
+          test_path = Path("packages/coding-agent/test/plan-mode-shortcut.test.ts")
+          test_path.write_text('''import { matchesKey } from "@earendil-works/pi-tui";
+          import { describe, expect, it } from "vitest";
+          import { KEYBINDINGS } from "../src/core/keybindings.ts";
+          import { PLAN_MODE_SHORTCUT } from "../src/extensions/plan-mode/index.ts";
+
+          describe("plan mode shortcut", () => {
+          \tit("uses Shift+Tab and accepts the standard terminal backtab sequence", () => {
+          \t\texpect(PLAN_MODE_SHORTCUT).toBe("shift+tab");
+          \t\texpect(matchesKey("\\x1b[Z", PLAN_MODE_SHORTCUT)).toBe(true);
+          \t});
+
+          \tit("moves thinking-level cycling away from the reserved Shift+Tab binding", () => {
+          \t\texpect(KEYBINDINGS["app.thinking.cycle"].defaultKeys).toBe("ctrl+alt+p");
+          \t});
+          });
+          ''')
+          PY
+
+      - name: Commit implementation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/apply-plan-shift-tab.yml
+          git add packages/coding-agent/src/extensions/plan-mode/index.ts packages/coding-agent/src/core/keybindings.ts packages/coding-agent/test/plan-mode-shortcut.test.ts
+          git commit -m "fix(coding-agent): bind plan mode to Shift+Tab"
+          git push origin HEAD:fix/plan-mode-shift-tab
