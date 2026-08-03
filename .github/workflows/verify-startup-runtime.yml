@@ -1,11 +1,12 @@
 name: Verify built startup runtime
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - verify/startup-runtime-20260803
-    paths:
-      - .github/workflows/verify-startup-runtime.yml
 
 permissions:
   contents: read
@@ -36,54 +37,4 @@ jobs:
         run: npm run build
 
       - name: Launch built CLI in a PTY
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/pi-home"
-          capture="$RUNNER_TEMP/pi-startup.typescript"
-          clean="$RUNNER_TEMP/pi-startup-clean.txt"
-
-          status=0
-          script -qefc "env TERM=xterm-256color COLORTERM=truecolor PI_OFFLINE=1 HOME='$RUNNER_TEMP/pi-home' timeout --signal=TERM --kill-after=2s 7s ./packages/coding-agent/dist/cli.js" "$capture" || status=$?
-          echo "PTY command exit status: $status"
-
-          python <<'PY'
-          import os
-          import re
-          from pathlib import Path
-
-          source = Path(os.environ["RUNNER_TEMP"]) / "pi-startup.typescript"
-          target = Path(os.environ["RUNNER_TEMP"]) / "pi-startup-clean.txt"
-          text = source.read_bytes().decode("utf-8", "replace")
-          text = re.sub(r"\x1b\][^\x07]*(?:\x07|\x1b\\)", "", text)
-          text = re.sub(r"\x1bP.*?\x1b\\", "", text, flags=re.S)
-          text = re.sub(r"\x1b_[^\x07]*\x07", "", text)
-          text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
-          text = re.sub(r"\x1b[@-_]", "", text)
-          text = text.replace("\r", "\n").replace("\x00", "")
-          target.write_text(text, encoding="utf-8")
-          PY
-
-          echo '----- cleaned startup capture -----'
-          cat "$clean"
-          echo '----- end startup capture -----'
-
-          if grep -aE 'uncaughtException|TypeError:|SyntaxError:|ReferenceError:' "$clean"; then
-            echo 'Runtime exception detected in startup capture.' >&2
-            exit 1
-          fi
-          grep -aF 'pi-claude v0.83.9' "$clean"
-          grep -aF '▐▛███▜▌' "$clean"
-          if grep -aF 'Pi can explain its own features' "$clean"; then
-            echo 'Legacy verbose startup copy was still rendered.' >&2
-            exit 1
-          fi
-
-      - name: Upload startup capture
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pi-claude-startup-runtime
-          path: |
-            ${{ runner.temp }}/pi-startup.typescript
-            ${{ runner.temp }}/pi-startup-clean.txt
+        run: node scripts/verify-built-startup-runtime.mjs
