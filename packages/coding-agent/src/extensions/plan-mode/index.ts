@@ -36,7 +36,7 @@ import {
 } from "./state.ts";
 
 export const PLAN_MODE_STATUS_KEY = "native.plan-mode";
-const PLAN_MODE_SHORTCUT = Key.ctrlAlt("p");
+export const PLAN_MODE_SHORTCUT = Key.shift("tab");
 const HUMAN_TURNS_BETWEEN_REMINDERS = 5;
 const FULL_REMINDER_EVERY = 5;
 const BUILTIN_READ_ONLY_TOOLS = ["read", "grep", "find", "ls"] as const;
