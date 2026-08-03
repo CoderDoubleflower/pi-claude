@@ -280,7 +280,10 @@ export class ToolExecutionComponent extends Container {
 				? theme.fg("toolError", "●")
 				: theme.fg("toolSuccess", "●");
 
-		if (firstContentLine === -1 || isTerminalImageSequence(lines[firstContentLine] ?? "")) {
+		if (firstContentLine === -1) {
+			return ["", `${status} ${theme.fg("toolTitle", theme.bold(this.toolName))}`];
+		}
+		if (isTerminalImageSequence(lines[firstContentLine] ?? "")) {
 			return ["", `${status} ${theme.fg("toolTitle", theme.bold(this.toolName))}`, ...lines];
 		}
 
