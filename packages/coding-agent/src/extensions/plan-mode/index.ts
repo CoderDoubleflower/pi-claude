@@ -450,7 +450,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		parameters: ExitPlanModeSchema,
 		renderShell: "self",
 		executionMode: "sequential",
-		async execute(_toolCallId, { plan: submittedPlan }, _signal, _onUpdate, ctx) {
+		async execute(_toolCallId, { plan: submittedPlan }, _signal, onUpdate, ctx) {
 			if (state.phase !== "planning") {
 				return textResult(
 					"ExitPlanMode can only be used while plan mode is active.",
@@ -478,6 +478,16 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			}
 
 			while (true) {
+				onUpdate?.({
+					content: [],
+					details: {
+						kind: "current-plan",
+						title: "Here is Claude's plan",
+						subtitle: "Review the complete plan below, then choose how to proceed.",
+						planPath: state.planPath,
+						plan,
+					},
+				});
 				const choice = await ctx.ui.select("Ready to implement?", [
 					"Yes, start implementing",
 					"Yes, clear context and start implementing",

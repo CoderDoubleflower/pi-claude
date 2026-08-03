@@ -283,4 +283,15 @@ describe("Claude-style plan mode", () => {
 		expect(source).not.toContain("implementation will start after compaction");
 		expect(source).not.toContain("Starting implementation with a compacted context.");
 	});
+
+	it("streams the complete plan before opening approval choices and refreshes after edits", () => {
+		const source = readFileSync(new URL("../src/extensions/plan-mode/index.ts", import.meta.url), "utf8");
+		const previewIndex = source.indexOf('title: "Here is Claude\'s plan"');
+		const selectionIndex = source.indexOf('const choice = await ctx.ui.select("Ready to implement?"');
+		expect(source).toContain("async execute(_toolCallId, { plan: submittedPlan }, _signal, onUpdate, ctx)");
+		expect(source).toContain("onUpdate?.({");
+		expect(source).toContain("Review the complete plan below, then choose how to proceed.");
+		expect(previewIndex).toBeGreaterThan(-1);
+		expect(selectionIndex).toBeGreaterThan(previewIndex);
+	});
 });
