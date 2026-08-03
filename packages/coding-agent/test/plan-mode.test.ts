@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -234,5 +234,16 @@ describe("Claude-style plan mode", () => {
 		expect(prompt).toContain("AskUserQuestion");
 		expect(prompt).toContain(EXIT_PLAN_MODE_TOOL_NAME);
 		expect(buildSparsePlanModePrompt("/tmp/example-plan.md")).toContain("Never request plan approval");
+	});
+
+	it("uses a guarded fresh session instead of compaction for clear-context plan approval", () => {
+		const source = readFileSync(new URL("../src/extensions/plan-mode/index.ts", import.meta.url), "utf8");
+		expect(source).toContain("const startFreshSession = ctx.newSession;");
+		expect(source).toContain("void startFreshSession({");
+		expect(source).toContain("Context clear is unavailable; starting implementation in the current context.");
+		expect(source).toContain("Starting implementation with a clean context.");
+		expect(source).not.toContain("ctx.compact({");
+		expect(source).not.toContain("implementation will start after compaction");
+		expect(source).not.toContain("Starting implementation with a compacted context.");
 	});
 });

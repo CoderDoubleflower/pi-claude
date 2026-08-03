@@ -342,6 +342,16 @@ export interface ExtensionContext {
 	getContextUsage(): ContextUsage | undefined;
 	/** Trigger compaction without awaiting completion. */
 	compact(options?: CompactOptions): void;
+	/**
+	 * Start a fresh session after an explicit user-approved transition.
+	 * Event handlers must only call this after the agent has settled; post-replacement
+	 * work belongs in withSession because the current extension context becomes stale.
+	 */
+	newSession?(options?: {
+		parentSession?: string;
+		setup?: (sessionManager: SessionManager) => Promise<void>;
+		withSession?: (ctx: ReplacedSessionContext) => Promise<void>;
+	}): Promise<{ cancelled: boolean }>;
 	/** Get the current effective system prompt. */
 	getSystemPrompt(): string;
 }

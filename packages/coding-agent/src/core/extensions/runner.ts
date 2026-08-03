@@ -743,6 +743,10 @@ export class ExtensionRunner {
 				runner.assertActive();
 				runner.compactFn(options);
 			},
+			newSession: (options) => {
+				runner.assertActive();
+				return runner.newSessionHandler(options);
+			},
 			getSystemPrompt: () => {
 				runner.assertActive();
 				return runner.getSystemPromptFn();
