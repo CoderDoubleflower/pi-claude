@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,21 +31,35 @@ function stripTerminalSequences(value) {
 
 const tempRoot = mkdtempSync(join(tmpdir(), "pi-claude-runtime-"));
 const homeDir = join(tempRoot, "home");
+const projectDir = join(tempRoot, "project");
+const agentDir = join(homeDir, ".pi", "agent");
 const capturePath = join(tempRoot, "startup.typescript");
 
 try {
+	mkdirSync(agentDir, { recursive: true });
+	mkdirSync(projectDir, { recursive: true });
+	writeFileSync(
+		join(agentDir, "settings.json"),
+		JSON.stringify({ quietStartup: false, lastChangelogVersion: packageJson.version }, null, 2),
+		"utf8",
+	);
+
 	const command = [
-		"env",
-		"TERM=xterm-256color",
-		"COLORTERM=truecolor",
-		"PI_OFFLINE=1",
-		`HOME=${shellQuote(homeDir)}`,
-		"timeout --signal=TERM --kill-after=2s 7s",
-		shellQuote(cliPath),
-	].join(" ");
+		"stty cols 120 rows 40",
+		`cd ${shellQuote(projectDir)}`,
+		[
+			"exec env",
+			"TERM=xterm-256color",
+			"COLORTERM=truecolor",
+			"PI_OFFLINE=1",
+			`HOME=${shellQuote(homeDir)}`,
+			"timeout --signal=TERM --kill-after=2s 7s",
+			shellQuote(cliPath),
+		].join(" "),
+	].join(" && ");
 
 	const result = spawnSync("script", ["-qefc", command, capturePath], {
-		cwd: repoRoot,
+		cwd: projectDir,
 		encoding: "utf8",
 		timeout: 20_000,
 		env: { ...process.env, PI_OFFLINE: "1" },
