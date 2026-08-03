@@ -45,6 +45,8 @@ export function getPlanModeShortcutAction(phase: PlanModeState["phase"]): "enter
 const HUMAN_TURNS_BETWEEN_REMINDERS = 5;
 const FULL_REMINDER_EVERY = 5;
 const PLAN_CUSTOM_TOOLS = [ASK_USER_QUESTION_TOOL_NAME, EXIT_PLAN_MODE_TOOL_NAME] as const;
+const PLAN_ALWAYS_ALLOWED_TOOLS = new Set<string>(["read", "grep", "find", "ls", "TodoWrite", ...PLAN_CUSTOM_TOOLS]);
+const PLAN_TOOL_INPUT_PREVIEW_LIMIT = 1200;
 
 interface PlanRenderDetails {
 	kind:
@@ -102,6 +104,18 @@ const ExitPlanModeSchema = Type.Object({
 
 function unique(values: readonly string[]): string[] {
 	return [...new Set(values)];
+}
+
+function buildPlanToolInputPreview(input: Record<string, unknown>): string {
+	let serialized: string;
+	try {
+		serialized = JSON.stringify(input, null, 2);
+	} catch {
+		serialized = "(arguments could not be serialized)";
+	}
+	return serialized.length > PLAN_TOOL_INPUT_PREVIEW_LIMIT
+		? `${serialized.slice(0, PLAN_TOOL_INPUT_PREVIEW_LIMIT)}…`
+		: serialized;
 }
 
 function isLightTheme(theme: Theme): boolean {
@@ -596,7 +610,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		},
 	});
 
-	pi.on("tool_call", (event, ctx) => {
+	pi.on("tool_call", async (event, ctx) => {
 		if (state.phase === "inactive") return;
 
 		if (isToolCallEventType("bash", event)) {
@@ -622,9 +636,25 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			return;
 		}
 
-		// Keep extension, MCP, web, LSP, and other custom tools available in plan mode.
-		// Their existing permission systems remain authoritative; this extension only
-		// adds hard enforcement for the built-in shell and file-write paths above.
+		if (PLAN_ALWAYS_ALLOWED_TOOLS.has(event.toolName)) return;
+
+		if (!ctx.hasUI) {
+			return {
+				block: true,
+				reason: `Plan mode could not verify that ${event.toolName} is read-only, and no interactive approval UI is available.`,
+			};
+		}
+
+		const approved = await ctx.ui.confirm(
+			`Allow ${event.toolName} in plan mode?`,
+			`This tool is not known to be read-only. Allow this invocation?\n\nArguments:\n${buildPlanToolInputPreview(event.input)}`,
+		);
+		if (!approved) {
+			return {
+				block: true,
+				reason: `The user declined ${event.toolName} while plan mode is active.`,
+			};
+		}
 	});
 
 	pi.on("before_agent_start", () => {

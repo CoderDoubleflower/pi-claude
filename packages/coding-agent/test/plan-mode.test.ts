@@ -265,10 +265,12 @@ describe("Claude-style plan mode", () => {
 		expect(buildSparsePlanModePrompt("/tmp/example-plan.md")).toContain("Never request plan approval");
 	});
 
-	it("does not blanket-block custom tools after entering plan mode", () => {
+	it("asks before running tools whose plan-mode safety is unknown", () => {
 		const source = readFileSync(new URL("../src/extensions/plan-mode/index.ts", import.meta.url), "utf8");
-		expect(source).toContain("Keep extension, MCP, web, LSP, and other custom tools available");
-		expect(source).not.toContain("not known to be read-only");
+		expect(source).toContain("PLAN_ALWAYS_ALLOWED_TOOLS.has(event.toolName)");
+		expect(source).toContain("This tool is not known to be read-only. Allow this invocation?");
+		expect(source).toContain("no interactive approval UI is available");
+		expect(source).not.toContain("is unavailable in plan mode because it is not known to be read-only");
 	});
 
 	it("uses a guarded fresh session instead of compaction for clear-context plan approval", () => {
