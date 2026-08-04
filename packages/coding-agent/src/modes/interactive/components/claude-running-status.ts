@@ -12,12 +12,20 @@ export const CLAUDE_RUNNING_STATUS_THRESHOLD_MS = 30_000;
 export type ClaudeWorkingMode = "requesting" | "responding" | "thinking" | "tool-use";
 export type ClaudeThinkingStatus = "thinking" | number | null;
 
+export interface ClaudeRunningTodo {
+	content: string;
+	status: "pending" | "in_progress" | "completed";
+	activeForm: string;
+}
+
 export interface ClaudeRunningStatusSnapshot {
 	elapsedMs: number;
 	responseCharacters: number;
 	mode: ClaudeWorkingMode;
 	thinkingStatus: ClaudeThinkingStatus;
 	effortLevel?: string;
+	todos?: ClaudeRunningTodo[];
+	completionTimestamps?: [string, number][];
 }
 
 export interface DecodedClaudeRunningMessage {
@@ -37,6 +45,53 @@ function parseThinkingStatus(value: unknown): ClaudeThinkingStatus | undefined {
 	if (value === null || value === "thinking") return value;
 	if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
 	return undefined;
+}
+
+function parseTodo(value: unknown): ClaudeRunningTodo | undefined {
+	if (!isRecord(value)) return undefined;
+	if (
+		typeof value.content !== "string" ||
+		typeof value.activeForm !== "string" ||
+		(value.status !== "pending" && value.status !== "in_progress" && value.status !== "completed")
+	) {
+		return undefined;
+	}
+	return {
+		content: value.content,
+		status: value.status,
+		activeForm: value.activeForm,
+	};
+}
+
+function parseTodos(value: unknown): ClaudeRunningTodo[] | undefined {
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value)) return undefined;
+	const todos: ClaudeRunningTodo[] = [];
+	for (const item of value) {
+		const todo = parseTodo(item);
+		if (!todo) return undefined;
+		todos.push(todo);
+	}
+	return todos;
+}
+
+function parseCompletionTimestamps(value: unknown): [string, number][] | undefined {
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value)) return undefined;
+	const timestamps: [string, number][] = [];
+	for (const entry of value) {
+		if (
+			!Array.isArray(entry) ||
+			entry.length !== 2 ||
+			typeof entry[0] !== "string" ||
+			typeof entry[1] !== "number" ||
+			!Number.isFinite(entry[1])
+		) {
+			return undefined;
+		}
+		timestamps.push([entry[0], entry[1]]);
+	}
+	return timestamps;
 }
 
 function parseSnapshot(value: unknown): ClaudeRunningStatusSnapshot | undefined {
@@ -64,6 +119,8 @@ function parseSnapshot(value: unknown): ClaudeRunningStatusSnapshot | undefined 
 		thinkingStatus,
 		effortLevel:
 			typeof value.effortLevel === "string" && value.effortLevel.length > 0 ? value.effortLevel : undefined,
+		todos: parseTodos(value.todos),
+		completionTimestamps: parseCompletionTimestamps(value.completionTimestamps),
 	};
 }
 
