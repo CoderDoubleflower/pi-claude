@@ -3,7 +3,6 @@ import { describe, expect, test } from "vitest";
 import type { TodoItem } from "../src/core/tools/todo-write.ts";
 import { TodoPanelComponent } from "../src/extensions/todo-panel.ts";
 import {
-	CLAUDE_RUNNING_STATUS_THRESHOLD_MS,
 	encodeClaudeRunningMessage,
 	formatClaudeRunningMessage,
 } from "../src/modes/interactive/components/claude-running-status.ts";
@@ -47,18 +46,18 @@ describe("Claude running status parity", () => {
 		);
 	});
 
-	test("uses Claude Code's strict 30-second threshold and requesting arrow", () => {
+	test("uses Claude Code's verbose branch from the first frame", () => {
 		const base = {
 			responseCharacters: 4000,
 			mode: "requesting" as const,
 			thinkingStatus: null,
 		};
-		expect(
-			formatClaudeRunningMessage("Working…", { ...base, elapsedMs: CLAUDE_RUNNING_STATUS_THRESHOLD_MS }, 100),
-		).toBe("Working…");
-		expect(
-			formatClaudeRunningMessage("Working…", { ...base, elapsedMs: CLAUDE_RUNNING_STATUS_THRESHOLD_MS + 1 }, 100),
-		).toBe("Working… (30s · ↑ 1.0k tokens)");
+		expect(formatClaudeRunningMessage("Working…", { ...base, elapsedMs: 0 }, 100)).toBe(
+			"Working… (0s · ↑ 1.0k tokens)",
+		);
+		expect(formatClaudeRunningMessage("Working…", { ...base, elapsedMs: 750, responseCharacters: 0 }, 100)).toBe(
+			"Working… (0s)",
+		);
 	});
 
 	test("prioritizes thinking and drops effort, timer, and tokens on narrow terminals", () => {

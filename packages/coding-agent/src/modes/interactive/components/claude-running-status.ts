@@ -7,8 +7,6 @@ const CLAUDE_RUNNING_STATUS_MARKER = "\u001fpi-claude-running-status:";
 const STATUS_SEPARATOR = " · ";
 const THINKING_BARE_TEXT = "thinking";
 
-export const CLAUDE_RUNNING_STATUS_THRESHOLD_MS = 30_000;
-
 export type ClaudeWorkingMode = "requesting" | "responding" | "thinking" | "tool-use";
 export type ClaudeThinkingStatus = "thinking" | number | null;
 
@@ -175,7 +173,9 @@ export function formatClaudeRunningMessage(
 
 	const availableSpace = columns - visibleWidth(message) - 5;
 	const wantsThinking = thinkingText !== undefined;
-	const wantsTimerAndTokens = status.elapsedMs > CLAUDE_RUNNING_STATUS_THRESHOLD_MS;
+	// pi-claude intentionally follows Claude Code's verbose branch: elapsed time
+	// and the cumulative output-token estimate are eligible from the first frame.
+	const wantsTimerAndTokens = true;
 
 	let thinkingWidth = thinkingText ? visibleWidth(thinkingText) : 0;
 	let showThinking = wantsThinking && availableSpace > thinkingWidth;

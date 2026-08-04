@@ -134,6 +134,14 @@ function getAssistantEventMessage(event: AssistantMessageEvent): AssistantMessag
 	return undefined;
 }
 
+function getExplicitEffortLevel(entries: readonly SessionEntry[]): string | undefined {
+	for (let index = entries.length - 1; index >= 0; index--) {
+		const entry = entries[index];
+		if (entry.type === "thinking_level_change") return entry.thinkingLevel;
+	}
+	return undefined;
+}
+
 export class TodoPanelComponent implements Component {
 	private readonly todos: TodoItem[];
 	private readonly theme: Theme;
@@ -219,16 +227,21 @@ export class TodoPanelManager {
 	private statusTimer: ReturnType<typeof setInterval> | undefined;
 	private context: ExtensionContext | undefined;
 	private activityStartedAt: number | undefined;
+	private completedResponseCharacters = 0;
+	private activeResponseCharacters = 0;
+	private hasActiveAssistantMessage = false;
 	private responseCharacters = 0;
 	private displayedResponseCharacters = 0;
 	private activityMode: ClaudeWorkingMode = "requesting";
 	private thinkingStartedAt: number | undefined;
 	private thinkingEndedAt: number | undefined;
 	private thinkingDurationMs: number | undefined;
+	private effortLevel: string | undefined;
 
 	restore(ctx: ExtensionContext, entries: readonly SessionEntry[]): void {
 		this.stopStatusTimer();
 		this.resetActivityState();
+		this.effortLevel = getExplicitEffortLevel(entries);
 		this.applyTodos(ctx, getLatestTodoWriteTodos(entries) ?? [], false);
 	}
 
@@ -270,9 +283,6 @@ export class TodoPanelManager {
 		if (this.activityStartedAt === undefined) return;
 		this.context = ctx;
 		this.activityMode = "requesting";
-		this.responseCharacters = 0;
-		this.displayedResponseCharacters = 0;
-		this.resetThinkingState();
 		this.syncWorkingMessage();
 	}
 
@@ -280,16 +290,15 @@ export class TodoPanelManager {
 		if (this.activityStartedAt === undefined || !isAssistantMessage(message)) return;
 		this.context = ctx;
 		this.activityMode = "responding";
-		this.responseCharacters = estimateAssistantResponseCharacters(message);
-		this.displayedResponseCharacters = 0;
-		this.resetThinkingState();
+		this.beginAssistantMessage(message);
 		this.syncWorkingMessage();
 	}
 
 	updateMessage(ctx: ExtensionContext, event: AssistantMessageEvent): void {
 		if (this.activityStartedAt === undefined) return;
 		this.context = ctx;
-		this.responseCharacters = estimateAssistantResponseCharacters(getAssistantEventMessage(event));
+		const message = getAssistantEventMessage(event);
+		if (message) this.updateAssistantMessage(message);
 		const now = Date.now();
 		switch (event.type) {
 			case "thinking_start":
@@ -331,7 +340,7 @@ export class TodoPanelManager {
 	endMessage(ctx: ExtensionContext, message: unknown): void {
 		if (this.activityStartedAt === undefined || !isAssistantMessage(message)) return;
 		this.context = ctx;
-		this.responseCharacters = estimateAssistantResponseCharacters(message);
+		this.completeAssistantMessage(message);
 		this.endThinking(Date.now());
 		const lastContent = message.content.at(-1);
 		this.activityMode = lastContent?.type === "toolCall" ? "tool-use" : "responding";
@@ -352,6 +361,12 @@ export class TodoPanelManager {
 		this.syncWorkingMessage();
 	}
 
+	setExplicitEffortLevel(ctx: ExtensionContext, level: string): void {
+		this.context = ctx;
+		this.effortLevel = level;
+		this.syncWorkingMessage();
+	}
+
 	dispose(ctx?: ExtensionContext): void {
 		this.clearTodoTimers();
 		this.stopStatusTimer();
@@ -363,6 +378,7 @@ export class TodoPanelManager {
 		this.context = undefined;
 		this.todos = [];
 		this.completionTimestamps.clear();
+		this.effortLevel = undefined;
 		this.resetActivityState();
 	}
 
@@ -427,13 +443,41 @@ export class TodoPanelManager {
 					responseCharacters: this.displayedResponseCharacters,
 					mode: thinkingStatus === "thinking" ? "thinking" : this.activityMode,
 					thinkingStatus,
-					effortLevel: ctx.thinkingLevel,
+					effortLevel: this.effortLevel,
 					todos: cloneTodos(this.todos),
 					completionTimestamps: [...this.completionTimestamps.entries()],
 				},
 				ensureClaudeWorkingEllipsis(current?.activeForm),
 			),
 		);
+	}
+
+	private beginAssistantMessage(message: AssistantMessage): void {
+		if (this.hasActiveAssistantMessage) {
+			this.completedResponseCharacters += this.activeResponseCharacters;
+		}
+		this.hasActiveAssistantMessage = true;
+		this.activeResponseCharacters = estimateAssistantResponseCharacters(message);
+		this.responseCharacters = this.completedResponseCharacters + this.activeResponseCharacters;
+	}
+
+	private updateAssistantMessage(message: AssistantMessage): void {
+		if (!this.hasActiveAssistantMessage) {
+			this.hasActiveAssistantMessage = true;
+		}
+		this.activeResponseCharacters = Math.max(
+			this.activeResponseCharacters,
+			estimateAssistantResponseCharacters(message),
+		);
+		this.responseCharacters = this.completedResponseCharacters + this.activeResponseCharacters;
+	}
+
+	private completeAssistantMessage(message: AssistantMessage): void {
+		const finalCharacters = Math.max(this.activeResponseCharacters, estimateAssistantResponseCharacters(message));
+		this.completedResponseCharacters += finalCharacters;
+		this.activeResponseCharacters = 0;
+		this.hasActiveAssistantMessage = false;
+		this.responseCharacters = this.completedResponseCharacters;
 	}
 
 	private advanceDisplayedResponseCharacters(): void {
@@ -481,6 +525,9 @@ export class TodoPanelManager {
 
 	private resetActivityState(): void {
 		this.activityStartedAt = undefined;
+		this.completedResponseCharacters = 0;
+		this.activeResponseCharacters = 0;
+		this.hasActiveAssistantMessage = false;
 		this.responseCharacters = 0;
 		this.displayedResponseCharacters = 0;
 		this.activityMode = "requesting";
@@ -572,5 +619,6 @@ export default function todoPanelExtension(pi: ExtensionAPI): void {
 		const details = parseTodoWriteDetails(result.details);
 		if (details) panel.update(ctx, details.newTodos);
 	});
+	pi.on("thinking_level_select", (event, ctx) => panel.setExplicitEffortLevel(ctx, event.level));
 	pi.on("session_shutdown", (_event, ctx) => panel.dispose(ctx));
 }
