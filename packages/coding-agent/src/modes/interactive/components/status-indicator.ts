@@ -52,7 +52,7 @@ export class StatusIndicator extends Loader {
 }
 
 export class WorkingStatusIndicator extends StatusIndicator {
-	private readonly ui: TUI;
+	private readonly tui: TUI;
 	private readonly defaultMessage: string;
 	private baseMessage: string;
 	private runningStatus: ClaudeRunningStatusSnapshot | undefined;
@@ -70,7 +70,7 @@ export class WorkingStatusIndicator extends StatusIndicator {
 			baseMessage,
 			indicator ?? CLAUDE_WORKING_INDICATOR,
 		);
-		this.ui = ui;
+		this.tui = ui;
 		this.defaultMessage = defaultMessage;
 		this.baseMessage = baseMessage;
 		this.runningStatus = decoded.status;
@@ -99,7 +99,7 @@ export class WorkingStatusIndicator extends StatusIndicator {
 		const todoPanel = new TodoPanelComponent(
 			todos,
 			theme,
-			() => this.ui.terminal.rows,
+			() => this.tui.terminal.rows,
 			false,
 			completionTimestamps,
 		);
