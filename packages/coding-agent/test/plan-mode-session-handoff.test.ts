@@ -8,7 +8,8 @@ describe("clear-context plan session handoff", () => {
 			new URL("../src/extensions/plan-mode/clean-session-wrapper.ts", import.meta.url),
 			"utf8",
 		);
-		expect(source).toContain("parentSession: _discardedParentSession");
+		expect(source).toContain("parentSession: discardedParentSession");
+		expect(source).toContain("void discardedParentSession;");
 		expect(source).toContain("...independentOptions");
 		expect(source).toContain("setup: async (sessionManager) =>");
 		expect(source).toContain("sessionManager.appendSessionInfo(executionSessionName);");
@@ -20,16 +21,16 @@ describe("clear-context plan session handoff", () => {
 		expect(source).toContain('from "./plan-mode/clean-session-wrapper.ts"');
 	});
 
-	it("prefers the planning session title and falls back to the approved plan heading", () => {
+	it("uses the approved plan heading and falls back to the planning-session title", () => {
 		expect(
 			buildPlanExecutionSessionName(
 				"# Implement the clean session handoff\n\n- Detach the execution session",
 				"修复 plan 模式清空上下文后的会话",
 			),
-		).toBe("修复 plan 模式清空上下文后的会话");
+		).toBe("Implement the clean session handoff");
 
-		expect(buildPlanExecutionSessionName("# Implement the clean session handoff\n\n- Add tests")).toBe(
-			"Implement the clean session handoff",
+		expect(buildPlanExecutionSessionName("# Plan\n\n", "修复 plan 模式清空上下文后的会话")).toBe(
+			"修复 plan 模式清空上下文后的会话",
 		);
 	});
 
