@@ -1,5 +1,6 @@
 import { type Component, Loader, type TUI } from "@earendil-works/pi-tui";
 import type { WorkingIndicatorOptions } from "../../../core/extensions/index.ts";
+import { TodoPanelComponent } from "../../../extensions/todo-panel.ts";
 import { theme } from "../theme/theme.ts";
 import {
 	type ClaudeRunningStatusSnapshot,
@@ -51,6 +52,7 @@ export class StatusIndicator extends Loader {
 }
 
 export class WorkingStatusIndicator extends StatusIndicator {
+	private readonly ui: TUI;
 	private readonly defaultMessage: string;
 	private baseMessage: string;
 	private runningStatus: ClaudeRunningStatusSnapshot | undefined;
@@ -68,6 +70,7 @@ export class WorkingStatusIndicator extends StatusIndicator {
 			baseMessage,
 			indicator ?? CLAUDE_WORKING_INDICATOR,
 		);
+		this.ui = ui;
 		this.defaultMessage = defaultMessage;
 		this.baseMessage = baseMessage;
 		this.runningStatus = decoded.status;
@@ -88,7 +91,19 @@ export class WorkingStatusIndicator extends StatusIndicator {
 			this.renderedMessage = formattedMessage;
 			super.setMessage(formattedMessage, false);
 		}
-		return super.render(width);
+		const lines = super.render(width);
+		const todos = this.runningStatus?.todos;
+		if (!todos || todos.length === 0) return lines;
+
+		const completionTimestamps = new Map(this.runningStatus?.completionTimestamps ?? []);
+		const todoPanel = new TodoPanelComponent(
+			todos,
+			theme,
+			() => this.ui.terminal.rows,
+			false,
+			completionTimestamps,
+		);
+		return [...lines, ...todoPanel.render(width)];
 	}
 }
 
