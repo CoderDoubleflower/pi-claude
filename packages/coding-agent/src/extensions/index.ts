@@ -1,7 +1,7 @@
 import type { InlineExtension } from "../core/extensions/types.ts";
 import { remoteCompactionExtension } from "../core/remote-compaction/index.ts";
 import llamaExtension from "./llama/index.ts";
-import planModeExtension from "./plan-mode/index.ts";
+import planModeExtension from "./plan-mode/clean-session-wrapper.ts";
 import todoPanelExtension from "./todo-panel.ts";
 
 export const builtInExtensions: InlineExtension[] = [
