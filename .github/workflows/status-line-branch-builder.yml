@@ -1,17 +1,20 @@
 name: Validate status line feature branch
 
 on:
-  push:
+  pull_request:
     branches:
       - main
-    paths:
-      - .github/workflows/status-line-branch-builder.yml
+    types:
+      - opened
+      - reopened
+      - synchronize
 
 permissions:
   contents: write
 
 jobs:
   build-feature-branch:
+    if: github.event.pull_request.head.ref == 'feat/claude-compatible-status-line'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
