@@ -52,6 +52,7 @@ Use `/trust` in interactive mode to save a project trust decision for future ses
 | Setting | Type | Default | Description |
 |---------|------|---------|-------------|
 | `theme` | string | `"dark"` | Theme name (`"dark"`, `"light"`, or custom) |
+| `statusLine` | object | - | Run a command whose output replaces the default informational footer rows while preserving built-in status badges |
 | `externalEditor` | string | `$VISUAL`, then `$EDITOR`, then Notepad on Windows or `nano` elsewhere | Command for Ctrl+G external editor; takes precedence over environment variables |
 | `quietStartup` | boolean | `false` | Hide startup header |
 | `defaultProjectTrust` | string | `"ask"` | Fallback project trust behavior: `"ask"`, `"always"`, or `"never"`. Global setting only |
@@ -75,6 +76,27 @@ For VS Code, include `--wait` so pi resumes after the editor exits:
   "externalEditor": "code --wait"
 }
 ```
+
+#### Custom status line
+
+`statusLine` follows Claude Code's command-based status-line format. The command receives a JSON object on stdin and its stdout is rendered as one or more footer rows. ANSI colors are preserved. The built-in status row remains separate, so Plan mode and other `ctx.ui.setStatus()` indicators are still displayed below the command output.
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "~/.pi/agent/statusline.sh",
+    "padding": 0,
+    "refreshInterval": 5
+  }
+}
+```
+
+The command runs in the current workspace. `COLUMNS` and `LINES` are provided in the environment. Updates are debounced, an older invocation is cancelled when a newer update starts, and commands are limited to five seconds and 64 KiB of stdout.
+
+The stdin object includes Claude-compatible fields for `cwd`, `session_id`, `transcript_path`, `model`, `workspace`, `version`, `cost`, `context_window`, `effort`, and `thinking`. A `pi` object additionally exposes `git_branch` and all current extension statuses. `refreshInterval` is optional and is clamped to a minimum of one second.
+
+Project-level status-line commands are loaded only after the project is trusted. A custom extension footer created with `ctx.ui.setFooter()` still replaces the complete built-in footer, including this status line and the built-in status badges.
 
 ### Telemetry and update checks
 

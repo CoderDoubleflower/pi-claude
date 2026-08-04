@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import { SettingsManager } from "../src/core/settings-manager.ts";
 import {
 	normalizeStatusLineOutput,
-	StatusLineCommandRunner,
 	type StatusLineCommandInput,
+	StatusLineCommandRunner,
 } from "../src/core/status-line.ts";
 import { appendExtensionStatuses } from "../src/modes/interactive/components/footer.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";

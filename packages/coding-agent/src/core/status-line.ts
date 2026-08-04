@@ -180,7 +180,11 @@ export class StatusLineCommandRunner {
 	private executionGeneration = 0;
 	private disposed = false;
 
-	constructor(private readonly requestRender: () => void = () => {}) {}
+	private readonly requestRender: () => void;
+
+	constructor(requestRender: () => void = () => {}) {
+		this.requestRender = requestRender;
+	}
 
 	update(settings: undefined): undefined;
 	update(settings: StatusLineSettings, request: StatusLineRequest): StatusLineRenderState;
