@@ -5,10 +5,10 @@ import type { ExtensionContext } from "../src/core/extensions/types.ts";
 import type { TodoItem } from "../src/core/tools/todo-write.ts";
 import { builtInExtensions } from "../src/extensions/index.ts";
 import {
-	TodoPanelComponent,
-	TodoPanelManager,
 	TODO_PANEL_HIDE_DELAY_MS,
 	TODO_PANEL_WIDGET_KEY,
+	TodoPanelComponent,
+	TodoPanelManager,
 } from "../src/extensions/todo-panel.ts";
 import { decodeClaudeRunningMessage } from "../src/modes/interactive/components/claude-running-status.ts";
 import { initTheme, type Theme, theme } from "../src/modes/interactive/theme/theme.ts";
@@ -108,9 +108,7 @@ afterEach(() => {
 
 describe("Claude-style todo panel", () => {
 	it("is registered as a hidden built-in extension", () => {
-		expect(builtInExtensions).toContainEqual(
-			expect.objectContaining({ name: "todo-panel", hidden: true }),
-		);
+		expect(builtInExtensions).toContainEqual(expect.objectContaining({ name: "todo-panel", hidden: true }));
 	});
 
 	it("matches the standalone Claude task summary and item styling", () => {

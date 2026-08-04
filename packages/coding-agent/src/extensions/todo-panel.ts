@@ -473,10 +473,7 @@ export class TodoPanelManager {
 	}
 
 	private completeAssistantMessage(message: AssistantMessage): void {
-		const finalCharacters = Math.max(
-			this.activeResponseCharacters,
-			estimateAssistantResponseCharacters(message),
-		);
+		const finalCharacters = Math.max(this.activeResponseCharacters, estimateAssistantResponseCharacters(message));
 		this.completedResponseCharacters += finalCharacters;
 		this.activeResponseCharacters = 0;
 		this.hasActiveAssistantMessage = false;

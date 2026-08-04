@@ -55,13 +55,9 @@ describe("Claude running status parity", () => {
 		expect(formatClaudeRunningMessage("Working…", { ...base, elapsedMs: 0 }, 100)).toBe(
 			"Working… (0s · ↑ 1.0k tokens)",
 		);
-		expect(
-			formatClaudeRunningMessage(
-				"Working…",
-				{ ...base, elapsedMs: 750, responseCharacters: 0 },
-				100,
-			),
-		).toBe("Working… (0s)");
+		expect(formatClaudeRunningMessage("Working…", { ...base, elapsedMs: 750, responseCharacters: 0 }, 100)).toBe(
+			"Working… (0s)",
+		);
 	});
 
 	test("prioritizes thinking and drops effort, timer, and tokens on narrow terminals", () => {
