@@ -62,14 +62,12 @@ function parseSnapshot(value: unknown): ClaudeRunningStatusSnapshot | undefined 
 		responseCharacters,
 		mode,
 		thinkingStatus,
-		effortLevel: typeof value.effortLevel === "string" && value.effortLevel.length > 0 ? value.effortLevel : undefined,
+		effortLevel:
+			typeof value.effortLevel === "string" && value.effortLevel.length > 0 ? value.effortLevel : undefined,
 	};
 }
 
-export function encodeClaudeRunningMessage(
-	status: ClaudeRunningStatusSnapshot,
-	message?: string,
-): string {
+export function encodeClaudeRunningMessage(status: ClaudeRunningStatusSnapshot, message?: string): string {
 	return `${message ?? ""}${CLAUDE_RUNNING_STATUS_MARKER}${JSON.stringify(status)}`;
 }
 
@@ -139,8 +137,7 @@ export function formatClaudeRunningMessage(
 	const showTimer = wantsTimerAndTokens && availableSpace > usedAfterThinking + timerWidth;
 	const usedAfterTimer = usedAfterThinking + (showTimer ? timerWidth + separatorWidth : 0);
 	const tokensWidth = visibleWidth(tokensText);
-	const showTokens =
-		wantsTimerAndTokens && totalTokens > 0 && availableSpace > usedAfterTimer + tokensWidth;
+	const showTokens = wantsTimerAndTokens && totalTokens > 0 && availableSpace > usedAfterTimer + tokensWidth;
 
 	const parts: string[] = [];
 	if (showTimer) parts.push(timerText);
