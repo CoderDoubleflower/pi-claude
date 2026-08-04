@@ -1,11 +1,13 @@
 name: Validate thinking tool boundary
 
 on:
-  push:
-    branches:
-      - fix/thinking-tool-activity-boundary
+  pull_request:
+    branches: [main]
     paths:
       - .github/workflows/validate-thinking-tool-boundary.yml
+      - packages/coding-agent/src/modes/interactive/interactive-mode.ts
+      - packages/coding-agent/src/modes/interactive/tool-activity-boundaries.ts
+      - packages/coding-agent/test/tool-activity-boundaries.test.ts
 
 permissions:
   contents: write
@@ -14,7 +16,7 @@ jobs:
   coding-agent-tests:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout feature branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: fix/thinking-tool-activity-boundary
