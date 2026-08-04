@@ -1,19 +1,43 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
-import { buildPlanExecutionSessionName } from "../src/extensions/plan-mode/clean-session-wrapper.ts";
+import { describe, expect, it, vi } from "vitest";
+import {
+	buildIndependentExecutionSessionOptions,
+	buildPlanExecutionSessionName,
+} from "../src/extensions/plan-mode/clean-session-wrapper.ts";
 
 describe("clear-context plan session handoff", () => {
-	it("discards persisted parent lineage and assigns the execution title during session setup", () => {
-		const source = readFileSync(
-			new URL("../src/extensions/plan-mode/clean-session-wrapper.ts", import.meta.url),
-			"utf8",
+	it("discards persisted parent lineage and assigns the execution title during session setup", async () => {
+		const calls: string[] = [];
+		const options = buildIndependentExecutionSessionOptions(
+			{
+				parentSession: "/tmp/planning-session.jsonl",
+				setup: async () => {
+					calls.push("original-setup");
+				},
+			},
+			"Implement clean session handoff",
 		);
-		expect(source).toContain("parentSession: discardedParentSession");
-		expect(source).toContain("void discardedParentSession;");
-		expect(source).toContain("...independentOptions");
-		expect(source).toContain("setup: async (sessionManager) =>");
-		expect(source).toContain("sessionManager.appendSessionInfo(executionSessionName);");
-		expect(source).not.toContain("parentSession: parentSession");
+
+		expect(options).not.toHaveProperty("parentSession");
+		await options.setup?.(
+			{
+				getSessionName: () => undefined,
+				appendSessionInfo: (name: string) => calls.push(`title:${name}`),
+			} as never,
+		);
+		expect(calls).toEqual(["original-setup", "title:Implement clean session handoff"]);
+	});
+
+	it("does not replace a title assigned by an earlier setup hook", async () => {
+		const appendSessionInfo = vi.fn();
+		const options = buildIndependentExecutionSessionOptions(undefined, "Generated title");
+		await options.setup?.(
+			{
+				getSessionName: () => "Existing title",
+				appendSessionInfo,
+			} as never,
+		);
+		expect(appendSessionInfo).not.toHaveBeenCalled();
 	});
 
 	it("registers the clean-session adapter as the native plan-mode extension", () => {
