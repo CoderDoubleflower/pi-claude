@@ -1,3 +1,4 @@
+import type { AssistantMessageEvent } from "@earendil-works/pi-ai";
 import type { Component, TUI } from "@earendil-works/pi-tui";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ExtensionContext } from "../src/core/extensions/types.ts";
@@ -9,6 +10,7 @@ import {
 	TODO_PANEL_HIDE_DELAY_MS,
 	TODO_PANEL_WIDGET_KEY,
 } from "../src/extensions/todo-panel.ts";
+import { decodeClaudeRunningMessage } from "../src/modes/interactive/components/claude-running-status.ts";
 import { initTheme, type Theme, theme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
@@ -31,6 +33,7 @@ function createPanelContext(): FakePanelContext {
 	const ctx = {
 		mode: "tui",
 		isIdle: () => idle,
+		thinkingLevel: "medium",
 		ui: {
 			setWidget: (key: string, content: WidgetContent) => {
 				expect(key).toBe(TODO_PANEL_WIDGET_KEY);
@@ -49,6 +52,26 @@ function createPanelContext(): FakePanelContext {
 		getWidget: () => widget,
 		getWorkingMessage: () => workingMessage,
 	};
+}
+
+function createAssistantMessage(text: string): unknown {
+	return {
+		role: "assistant",
+		content: [{ type: "text", text }],
+	};
+}
+
+function createAssistantEvent(type: string, text: string): AssistantMessageEvent {
+	return {
+		type,
+		partial: createAssistantMessage(text),
+	} as unknown as AssistantMessageEvent;
+}
+
+function getRunningStatus(fake: FakePanelContext) {
+	const message = fake.getWorkingMessage();
+	expect(message).toBeDefined();
+	return decodeClaudeRunningMessage(message ?? "").status;
 }
 
 function renderComponent(component: Component, width = 100): string {
@@ -145,5 +168,58 @@ describe("Claude-style todo panel", () => {
 		vi.advanceTimersByTime(1);
 		expect(fake.getWidget()).toBeUndefined();
 		expect(fake.getWorkingMessage()).toBeUndefined();
+	});
+
+	it("keeps a monotonic cumulative token estimate across assistant messages and turns", () => {
+		vi.useFakeTimers();
+		const fake = createPanelContext();
+		const manager = new TodoPanelManager();
+		fake.setIdle(false);
+		manager.update(fake.ctx, todos);
+		manager.startActivity(fake.ctx);
+
+		const first = createAssistantMessage("a".repeat(4000));
+		manager.startMessage(fake.ctx, first);
+		vi.advanceTimersByTime(4000);
+		expect(getRunningStatus(fake)?.responseCharacters).toBe(4000);
+		manager.endMessage(fake.ctx, first);
+
+		manager.startTurn(fake.ctx);
+		expect(getRunningStatus(fake)?.responseCharacters).toBe(4000);
+
+		const second = createAssistantMessage("b".repeat(4000));
+		manager.startMessage(fake.ctx, second);
+		vi.advanceTimersByTime(4000);
+		expect(getRunningStatus(fake)?.responseCharacters).toBe(8000);
+		manager.endMessage(fake.ctx, second);
+		manager.finishActivity(fake.ctx);
+	});
+
+	it("keeps thinking and thought-duration timing independent from turn and message boundaries", () => {
+		vi.useFakeTimers();
+		const fake = createPanelContext();
+		const manager = new TodoPanelManager();
+		fake.setIdle(false);
+		manager.update(fake.ctx, todos);
+		manager.startActivity(fake.ctx);
+
+		manager.updateMessage(fake.ctx, createAssistantEvent("thinking_start", "thinking"));
+		expect(getRunningStatus(fake)?.thinkingStatus).toBe("thinking");
+		expect(getRunningStatus(fake)?.effortLevel).toBeUndefined();
+
+		vi.advanceTimersByTime(500);
+		manager.updateMessage(fake.ctx, createAssistantEvent("thinking_end", "thinking"));
+		manager.startTurn(fake.ctx);
+		manager.startMessage(fake.ctx, createAssistantMessage("answer"));
+		expect(getRunningStatus(fake)?.thinkingStatus).toBe("thinking");
+
+		vi.advanceTimersByTime(1500);
+		expect(getRunningStatus(fake)?.thinkingStatus).toBe(500);
+		manager.setExplicitEffortLevel(fake.ctx, "medium");
+		expect(getRunningStatus(fake)?.effortLevel).toBe("medium");
+
+		vi.advanceTimersByTime(2000);
+		expect(getRunningStatus(fake)?.thinkingStatus).toBeNull();
+		manager.finishActivity(fake.ctx);
 	});
 });
