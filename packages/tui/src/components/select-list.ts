@@ -143,7 +143,9 @@ export class SelectList implements Component {
 		descriptionSingleLine: string | undefined,
 		primaryColumnWidth: number,
 	): string {
-		const prefix = isSelected ? "→ " : "  ";
+		// Preserve alignment without drawing a cursor glyph; selection is shown
+		// exclusively through the selected row color.
+		const prefix = "  ";
 		const prefixWidth = visibleWidth(prefix);
 
 		if (descriptionSingleLine && width > 40) {
