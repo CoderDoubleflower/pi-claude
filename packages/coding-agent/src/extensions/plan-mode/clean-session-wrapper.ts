@@ -7,6 +7,8 @@ const PLAN_EXECUTION_SESSION_NAME_MAX_LENGTH = 120;
 
 type UntypedExtensionHandler = (event: unknown, ctx: ExtensionContext) => unknown;
 type UntypedOn = (event: string, handler: UntypedExtensionHandler) => void;
+type NewSession = NonNullable<ExtensionContext["newSession"]>;
+export type PlanExecutionSessionOptions = NonNullable<Parameters<NewSession>[0]>;
 
 function getUserMessageText(message: AgentMessage): string | undefined {
 	if (message.role !== "user") return undefined;
@@ -78,25 +80,31 @@ export function buildPlanExecutionSessionName(plan: string, sourceSessionTitle?:
 	return "Implement approved plan";
 }
 
+export function buildIndependentExecutionSessionOptions(
+	options: PlanExecutionSessionOptions | undefined,
+	executionSessionName: string,
+): PlanExecutionSessionOptions {
+	const { parentSession: discardedParentSession, setup, ...independentOptions } = options ?? {};
+	void discardedParentSession;
+	return {
+		...independentOptions,
+		setup: async (sessionManager) => {
+			await setup?.(sessionManager);
+			if (!sessionManager.getSessionName()) {
+				sessionManager.appendSessionInfo(executionSessionName);
+			}
+		},
+	};
+}
+
 function withIndependentExecutionSession(ctx: ExtensionContext, executionSessionName: string): ExtensionContext {
 	const startFreshSession = ctx.newSession;
 	if (!startFreshSession) return ctx;
 
 	return {
 		...ctx,
-		newSession: async (options) => {
-			const { parentSession: discardedParentSession, setup, ...independentOptions } = options ?? {};
-			void discardedParentSession;
-			return startFreshSession({
-				...independentOptions,
-				setup: async (sessionManager) => {
-					await setup?.(sessionManager);
-					if (!sessionManager.getSessionName()) {
-						sessionManager.appendSessionInfo(executionSessionName);
-					}
-				},
-			});
-		},
+		newSession: async (options) =>
+			startFreshSession(buildIndependentExecutionSessionOptions(options, executionSessionName)),
 	};
 }
 
