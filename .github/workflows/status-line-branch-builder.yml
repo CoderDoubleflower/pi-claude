@@ -45,6 +45,9 @@ jobs:
         working-directory: packages/coding-agent
         run: node ../../node_modules/vitest/dist/cli.js --run test/status-line.test.ts
 
+      - name: Hydrate model data
+        run: npm run hydrate:model-data
+
       - name: Build workspace
         run: npm run build:offline
 
