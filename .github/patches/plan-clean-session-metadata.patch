@@ -1,0 +1,94 @@
+diff --git a/packages/coding-agent/src/extensions/plan-mode/index.ts b/packages/coding-agent/src/extensions/plan-mode/index.ts
+index 665a3d3..0000000 100644
+--- a/packages/coding-agent/src/extensions/plan-mode/index.ts
++++ b/packages/coding-agent/src/extensions/plan-mode/index.ts
+@@ -43,6 +43,7 @@ const PLAN_CUSTOM_TOOLS = [ASK_USER_QUESTION_TOOL_NAME, EXIT_PLAN_MODE_TOOL_NAME]
+ const PLAN_ALWAYS_ALLOWED_TOOLS = new Set<string>(["read", "grep", "find", "ls", "TodoWrite", ...PLAN_CUSTOM_TOOLS]);
+ const PLAN_TOOL_INPUT_PREVIEW_LIMIT = 1200;
++const PLAN_EXECUTION_SESSION_NAME_MAX_LENGTH = 120;
+ 
+ interface PlanRenderDetails {
+ 	kind:
+@@ -91,6 +92,58 @@ function unique(values: readonly string[]): string[] {
+ 	return [...new Set(values)];
+ }
+ 
++function getUserMessageText(message: AgentMessage): string | undefined {
++	if (message.role !== "user") return undefined;
++	if (typeof message.content === "string") return message.content;
++	const text = message.content
++		.filter(
++			(part): part is { type: "text"; text: string } =>
++				part.type === "text" && typeof (part as { text?: unknown }).text === "string",
++		)
++		.map((part) => part.text)
++		.join(" ");
++	return text || undefined;
++}
++
++function getSourceSessionTitle(ctx: ExtensionContext): string | undefined {
++	const explicitName = ctx.sessionManager.getSessionName();
++	if (explicitName?.trim()) return explicitName;
++
++	for (const entry of ctx.sessionManager.getEntries()) {
++		if (entry.type !== "message") continue;
++		const text = getUserMessageText(entry.message);
++		if (text?.trim()) return text;
++	}
++	return undefined;
++}
++
++function normalizePlanExecutionSessionName(value: string): string {
++	const firstNonEmptyLine = value.split(/\r?\n/).find((line) => line.trim());
++	if (!firstNonEmptyLine) return "";
++
++	const normalized = firstNonEmptyLine
++		.replace(/^\s{0,3}#{1,6}\s+/, "")
++		.replace(/^\s*(?:[-*+]|\d+[.)])\s+/, "")
++		.replace(/\s+/g, " ")
++		.trim();
++	if (!normalized) return "";
++
++	const characters = Array.from(normalized);
++	if (characters.length <= PLAN_EXECUTION_SESSION_NAME_MAX_LENGTH) return normalized;
++	return `${characters.slice(0, PLAN_EXECUTION_SESSION_NAME_MAX_LENGTH - 1).join("")}…`;
++}
++
++export function buildPlanExecutionSessionName(plan: string, sourceSessionTitle?: string): string {
++	const planLines = plan.split(/\r?\n/);
++	const candidates = [
++		sourceSessionTitle,
++		...planLines.filter((line) => /^\s{0,3}#{1,6}\s+\S/.test(line)),
++		...planLines,
++	];
++	for (const candidate of candidates) {
++		if (!candidate) continue;
++		const normalized = normalizePlanExecutionSessionName(candidate);
++		if (normalized) return normalized;
++	}
++	return "Implement approved plan";
++}
++
+ function buildPlanToolInputPreview(input: Record<string, unknown>): string {
+ 	let serialized: string;
+ 	try {
+@@ -727,7 +780,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
+ 		if (state.phase !== "awaiting-clear-context" || !state.pendingExecution) return;
+ 		const pending = state.pendingExecution;
+ 		const savedTools = state.toolsBeforePlan;
+-		const parentSession = ctx.sessionManager.getSessionFile();
++		const executionSessionName = buildPlanExecutionSessionName(pending.plan, getSourceSessionTitle(ctx));
+ 		state = {
+ 			...state,
+ 			phase: "inactive",
+@@ -773,7 +826,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
+ 			}
+ 			let deliveredInFreshSession = false;
+ 			void startFreshSession({
+-				parentSession: parentSession ?? undefined,
++				setup: async (sessionManager) => {
++					sessionManager.appendSessionInfo(executionSessionName);
++				},
+ 				withSession: async (nextCtx) => {
+ 					deliveredInFreshSession = true;
+ 					await nextCtx.sendMessage(buildExecutionMessage("Starting implementation with a clean context."), {
