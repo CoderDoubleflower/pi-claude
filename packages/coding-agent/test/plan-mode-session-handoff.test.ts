@@ -1,21 +1,23 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { buildPlanExecutionSessionName } from "../src/extensions/plan-mode/index.ts";
+import { buildPlanExecutionSessionName } from "../src/extensions/plan-mode/clean-session-wrapper.ts";
 
 describe("clear-context plan session handoff", () => {
-	it("creates an independent session and assigns its title before implementation starts", () => {
-		const source = readFileSync(new URL("../src/extensions/plan-mode/index.ts", import.meta.url), "utf8");
-		const start = source.indexOf('pi.on("agent_settled"');
-		const end = source.indexOf('pi.on("session_compact"', start);
+	it("discards persisted parent lineage and assigns the execution title during session setup", () => {
+		const source = readFileSync(
+			new URL("../src/extensions/plan-mode/clean-session-wrapper.ts", import.meta.url),
+			"utf8",
+		);
+		expect(source).toContain("parentSession: _discardedParentSession");
+		expect(source).toContain("...independentOptions");
+		expect(source).toContain("setup: async (sessionManager) =>");
+		expect(source).toContain("sessionManager.appendSessionInfo(executionSessionName);");
+		expect(source).not.toContain("parentSession: parentSession");
+	});
 
-		expect(start).toBeGreaterThanOrEqual(0);
-		expect(end).toBeGreaterThan(start);
-
-		const handoff = source.slice(start, end);
-		expect(handoff).not.toContain("parentSession");
-		expect(handoff).toContain("setup: async (sessionManager) =>");
-		expect(handoff).toContain("sessionManager.appendSessionInfo(executionSessionName);");
-		expect(handoff.indexOf("setup: async (sessionManager) =>")).toBeLessThan(handoff.indexOf("withSession: async"));
+	it("registers the clean-session adapter as the native plan-mode extension", () => {
+		const source = readFileSync(new URL("../src/extensions/index.ts", import.meta.url), "utf8");
+		expect(source).toContain('from "./plan-mode/clean-session-wrapper.ts"');
 	});
 
 	it("prefers the planning session title and falls back to the approved plan heading", () => {
