@@ -1,3 +1,4 @@
+import type { AssistantMessage, AssistantMessageEvent } from "@earendil-works/pi-ai";
 import { type Component, truncateToWidth } from "@earendil-works/pi-tui";
 import type { ExtensionAPI, ExtensionContext } from "../core/extensions/types.ts";
 import type { SessionEntry } from "../core/session-manager.ts";
@@ -7,11 +8,21 @@ import {
 	TODO_WRITE_TOOL_NAME,
 	type TodoItem,
 } from "../core/tools/todo-write.ts";
+import {
+	encodeClaudeRunningMessage,
+	ensureClaudeWorkingEllipsis,
+	type ClaudeThinkingStatus,
+	type ClaudeWorkingMode,
+} from "../modes/interactive/components/claude-running-status.ts";
 import type { Theme } from "../modes/interactive/theme/theme.ts";
 
 export const TODO_PANEL_WIDGET_KEY = "native.todo-panel";
 export const TODO_PANEL_HIDE_DELAY_MS = 5000;
 export const TODO_PANEL_RECENT_COMPLETED_TTL_MS = 30_000;
+
+const CLAUDE_STATUS_UPDATE_INTERVAL_MS = 50;
+const CLAUDE_THINKING_MINIMUM_DISPLAY_MS = 2000;
+const CLAUDE_THOUGHT_DURATION_DISPLAY_MS = 2000;
 
 interface TodoFigures {
 	tick: string;
@@ -81,16 +92,46 @@ function formatStandaloneSummary(todos: readonly TodoItem[], theme: Theme): stri
 	return `  ${theme.fg("dim", summary)}`;
 }
 
-function formatTodoLine(todo: TodoItem, width: number, theme: Theme): string {
+function formatTodoContent(todo: TodoItem, width: number, theme: Theme): string {
 	const maxSubjectWidth = Math.max(15, width - 15);
 	const subject = truncateToWidth(todo.content, maxSubjectWidth);
 	if (todo.status === "completed") {
-		return `  ${theme.fg("success", TODO_FIGURES.tick)} ${theme.fg("dim", theme.strikethrough(subject))}`;
+		return `${theme.fg("success", TODO_FIGURES.tick)} ${theme.fg("dim", theme.strikethrough(subject))}`;
 	}
 	if (todo.status === "in_progress") {
-		return `  ${theme.fg("accent", TODO_FIGURES.squareSmallFilled)} ${theme.bold(subject)}`;
+		return `${theme.fg("accent", TODO_FIGURES.squareSmallFilled)} ${theme.bold(subject)}`;
 	}
-	return `  ${TODO_FIGURES.squareSmall} ${subject}`;
+	return `${TODO_FIGURES.squareSmall} ${subject}`;
+}
+
+function isAssistantMessage(message: unknown): message is AssistantMessage {
+	return typeof message === "object" && message !== null && "role" in message && message.role === "assistant";
+}
+
+function estimateAssistantResponseCharacters(message: AssistantMessage | undefined): number {
+	if (!message) return 0;
+	let characters = 0;
+	for (const content of message.content) {
+		if (content.type === "text") {
+			characters += content.text.length;
+		} else if (content.type === "thinking") {
+			characters += content.thinking.length;
+		} else if (content.type === "toolCall") {
+			characters += content.name.length;
+			try {
+				characters += JSON.stringify(content.arguments).length;
+			} catch {
+				// Tool arguments are expected to be serializable; ignore malformed custom values.
+			}
+		}
+	}
+	return characters;
+}
+
+function getAssistantEventMessage(event: AssistantMessageEvent): AssistantMessage | undefined {
+	if ("partial" in event) return event.partial;
+	if ("message" in event && isAssistantMessage(event.message)) return event.message;
+	return undefined;
 }
 
 export class TodoPanelComponent implements Component {
@@ -156,11 +197,13 @@ export class TodoPanelComponent implements Component {
 		if (this.standalone) {
 			lines.push(truncateToWidth(formatStandaloneSummary(this.todos, this.theme), width));
 		}
-		for (const todo of visibleTodos) {
-			lines.push(truncateToWidth(formatTodoLine(todo, width, this.theme), width));
+		for (const [index, todo] of visibleTodos.entries()) {
+			const prefix = this.standalone ? "  " : index === 0 ? "  ⎿ " : "    ";
+			lines.push(truncateToWidth(`${prefix}${formatTodoContent(todo, width, this.theme)}`, width));
 		}
 		if (maxDisplay > 0 && hiddenTodos.length > 0) {
-			lines.push(truncateToWidth(`  ${this.theme.fg("dim", formatHiddenSummary(hiddenTodos))}`, width));
+			const prefix = this.standalone ? "  " : "    ";
+			lines.push(truncateToWidth(`${prefix}${this.theme.fg("dim", formatHiddenSummary(hiddenTodos))}`, width));
 		}
 		return lines;
 	}
@@ -173,9 +216,19 @@ export class TodoPanelManager {
 	private completionTimestamps = new Map<string, number>();
 	private hideTimer: ReturnType<typeof setTimeout> | undefined;
 	private recentCompletionTimer: ReturnType<typeof setTimeout> | undefined;
+	private statusTimer: ReturnType<typeof setInterval> | undefined;
 	private context: ExtensionContext | undefined;
+	private activityStartedAt: number | undefined;
+	private responseCharacters = 0;
+	private displayedResponseCharacters = 0;
+	private activityMode: ClaudeWorkingMode = "requesting";
+	private thinkingStartedAt: number | undefined;
+	private thinkingEndedAt: number | undefined;
+	private thinkingDurationMs: number | undefined;
 
 	restore(ctx: ExtensionContext, entries: readonly SessionEntry[]): void {
+		this.stopStatusTimer();
+		this.resetActivityState();
 		this.applyTodos(ctx, getLatestTodoWriteTodos(entries) ?? [], false);
 	}
 
@@ -183,14 +236,125 @@ export class TodoPanelManager {
 		this.applyTodos(ctx, todos, true);
 	}
 
+	/** Compatibility path used by existing callers and tests. Runtime lifecycle uses startActivity/finishActivity. */
 	renderForActivity(ctx: ExtensionContext): void {
 		this.context = ctx;
 		this.render();
 		this.syncWorkingMessage();
 	}
 
+	startActivity(ctx: ExtensionContext): void {
+		this.context = ctx;
+		this.stopStatusTimer();
+		this.resetActivityState();
+		this.activityStartedAt = Date.now();
+		this.render();
+		this.syncWorkingMessage();
+		if (ctx.mode !== "tui") return;
+		this.statusTimer = setInterval(() => {
+			this.advanceDisplayedResponseCharacters();
+			this.syncWorkingMessage();
+		}, CLAUDE_STATUS_UPDATE_INTERVAL_MS);
+		this.statusTimer.unref?.();
+	}
+
+	finishActivity(ctx: ExtensionContext): void {
+		this.context = ctx;
+		this.stopStatusTimer();
+		this.resetActivityState();
+		this.render();
+		if (ctx.mode === "tui") ctx.ui.setWorkingMessage();
+	}
+
+	startTurn(ctx: ExtensionContext): void {
+		if (this.activityStartedAt === undefined) return;
+		this.context = ctx;
+		this.activityMode = "requesting";
+		this.responseCharacters = 0;
+		this.displayedResponseCharacters = 0;
+		this.resetThinkingState();
+		this.syncWorkingMessage();
+	}
+
+	startMessage(ctx: ExtensionContext, message: unknown): void {
+		if (this.activityStartedAt === undefined || !isAssistantMessage(message)) return;
+		this.context = ctx;
+		this.activityMode = "responding";
+		this.responseCharacters = estimateAssistantResponseCharacters(message);
+		this.displayedResponseCharacters = 0;
+		this.resetThinkingState();
+		this.syncWorkingMessage();
+	}
+
+	updateMessage(ctx: ExtensionContext, event: AssistantMessageEvent): void {
+		if (this.activityStartedAt === undefined) return;
+		this.context = ctx;
+		this.responseCharacters = estimateAssistantResponseCharacters(getAssistantEventMessage(event));
+		const now = Date.now();
+		switch (event.type) {
+			case "thinking_start":
+			case "thinking_delta":
+				if (this.thinkingStartedAt === undefined || this.thinkingEndedAt !== undefined) {
+					this.thinkingStartedAt = now;
+					this.thinkingEndedAt = undefined;
+					this.thinkingDurationMs = undefined;
+				}
+				this.activityMode = "thinking";
+				break;
+			case "thinking_end":
+				this.endThinking(now);
+				this.activityMode = "responding";
+				break;
+			case "text_start":
+			case "text_delta":
+			case "text_end":
+				this.endThinking(now);
+				this.activityMode = "responding";
+				break;
+			case "toolcall_start":
+			case "toolcall_delta":
+			case "toolcall_end":
+				this.endThinking(now);
+				this.activityMode = "tool-use";
+				break;
+			case "done":
+				this.endThinking(now);
+				this.activityMode = event.reason === "toolUse" ? "tool-use" : "responding";
+				break;
+			default:
+				break;
+		}
+		this.advanceDisplayedResponseCharacters();
+		this.syncWorkingMessage();
+	}
+
+	endMessage(ctx: ExtensionContext, message: unknown): void {
+		if (this.activityStartedAt === undefined || !isAssistantMessage(message)) return;
+		this.context = ctx;
+		this.responseCharacters = estimateAssistantResponseCharacters(message);
+		this.endThinking(Date.now());
+		const lastContent = message.content.at(-1);
+		this.activityMode = lastContent?.type === "toolCall" ? "tool-use" : "responding";
+		this.syncWorkingMessage();
+	}
+
+	startToolExecution(ctx: ExtensionContext): void {
+		if (this.activityStartedAt === undefined) return;
+		this.context = ctx;
+		this.activityMode = "tool-use";
+		this.syncWorkingMessage();
+	}
+
+	endToolExecution(ctx: ExtensionContext): void {
+		if (this.activityStartedAt === undefined) return;
+		this.context = ctx;
+		this.activityMode = "requesting";
+		this.syncWorkingMessage();
+	}
+
 	dispose(ctx?: ExtensionContext): void {
-		this.clearTimers();
+		this.clearTodoTimers();
+		this.stopStatusTimer();
 		const activeContext = ctx ?? this.context;
 		if (activeContext?.mode === "tui") {
 			activeContext.ui.setWidget(TODO_PANEL_WIDGET_KEY, undefined, { placement: "aboveEditor" });
@@ -199,6 +363,7 @@ export class TodoPanelManager {
 		this.context = undefined;
 		this.todos = [];
 		this.completionTimestamps.clear();
+		this.resetActivityState();
 	}
 
 	private applyTodos(ctx: ExtensionContext, todos: readonly TodoItem[], trackTransitions: boolean): void {
@@ -247,12 +412,77 @@ export class TodoPanelManager {
 	private syncWorkingMessage(): void {
 		const ctx = this.context;
 		if (!ctx || ctx.mode !== "tui") return;
-		if (ctx.isIdle()) {
-			ctx.ui.setWorkingMessage();
+		const current = this.todos.find((todo) => todo.status === "in_progress");
+		if (this.activityStartedAt === undefined) {
+			ctx.ui.setWorkingMessage(ctx.isIdle() ? undefined : current?.activeForm);
 			return;
 		}
-		const current = this.todos.find((todo) => todo.status === "in_progress");
-		ctx.ui.setWorkingMessage(current?.activeForm);
+
+		const now = Date.now();
+		const thinkingStatus = this.getThinkingStatus(now);
+		ctx.ui.setWorkingMessage(
+			encodeClaudeRunningMessage(
+				{
+					elapsedMs: Math.max(0, now - this.activityStartedAt),
+					responseCharacters: this.displayedResponseCharacters,
+					mode: thinkingStatus === "thinking" ? "thinking" : this.activityMode,
+					thinkingStatus,
+					effortLevel: ctx.thinkingLevel,
+				},
+				ensureClaudeWorkingEllipsis(current?.activeForm),
+			),
+		);
+	}
+
+	private advanceDisplayedResponseCharacters(): void {
+		const gap = this.responseCharacters - this.displayedResponseCharacters;
+		if (gap <= 0) return;
+		let increment: number;
+		if (gap < 70) {
+			increment = 3;
+		} else if (gap < 200) {
+			increment = Math.max(8, Math.ceil(gap * 0.15));
+		} else {
+			increment = 50;
+		}
+		this.displayedResponseCharacters = Math.min(
+			this.displayedResponseCharacters + increment,
+			this.responseCharacters,
+		);
+	}
+
+	private endThinking(now: number): void {
+		if (this.thinkingStartedAt === undefined || this.thinkingEndedAt !== undefined) return;
+		this.thinkingEndedAt = now;
+		this.thinkingDurationMs = Math.max(0, now - this.thinkingStartedAt);
+	}
+
+	private getThinkingStatus(now: number): ClaudeThinkingStatus {
+		if (this.thinkingStartedAt === undefined) return null;
+		if (this.thinkingEndedAt === undefined) return "thinking";
+		const durationDisplayStart = Math.max(
+			this.thinkingEndedAt,
+			this.thinkingStartedAt + CLAUDE_THINKING_MINIMUM_DISPLAY_MS,
+		);
+		if (now < durationDisplayStart) return "thinking";
+		if (now < durationDisplayStart + CLAUDE_THOUGHT_DURATION_DISPLAY_MS) {
+			return this.thinkingDurationMs ?? 0;
+		}
+		return null;
+	}
+
+	private resetThinkingState(): void {
+		this.thinkingStartedAt = undefined;
+		this.thinkingEndedAt = undefined;
+		this.thinkingDurationMs = undefined;
+	}
+
+	private resetActivityState(): void {
+		this.activityStartedAt = undefined;
+		this.responseCharacters = 0;
+		this.displayedResponseCharacters = 0;
+		this.activityMode = "requesting";
+		this.resetThinkingState();
 	}
 
 	private render(): void {
@@ -290,14 +520,14 @@ export class TodoPanelManager {
 	}
 
 	private hide(): void {
-		this.clearTimers();
+		this.clearTodoTimers();
 		const ctx = this.context;
 		if (ctx?.mode === "tui") {
 			ctx.ui.setWidget(TODO_PANEL_WIDGET_KEY, undefined, { placement: "aboveEditor" });
-			ctx.ui.setWorkingMessage();
 		}
 		this.todos = [];
 		this.completionTimestamps.clear();
+		this.syncWorkingMessage();
 	}
 
 	private clearHideTimer(): void {
@@ -305,10 +535,15 @@ export class TodoPanelManager {
 		this.hideTimer = undefined;
 	}
 
-	private clearTimers(): void {
+	private clearTodoTimers(): void {
 		this.clearHideTimer();
 		if (this.recentCompletionTimer) clearTimeout(this.recentCompletionTimer);
 		this.recentCompletionTimer = undefined;
+	}
+
+	private stopStatusTimer(): void {
+		if (this.statusTimer) clearInterval(this.statusTimer);
+		this.statusTimer = undefined;
 	}
 }
 
@@ -317,9 +552,15 @@ export default function todoPanelExtension(pi: ExtensionAPI): void {
 
 	pi.on("session_start", (_event, ctx) => panel.restore(ctx, ctx.sessionManager.getBranch()));
 	pi.on("session_tree", (_event, ctx) => panel.restore(ctx, ctx.sessionManager.getBranch()));
-	pi.on("agent_start", (_event, ctx) => panel.renderForActivity(ctx));
-	pi.on("agent_settled", (_event, ctx) => panel.renderForActivity(ctx));
+	pi.on("agent_start", (_event, ctx) => panel.startActivity(ctx));
+	pi.on("agent_settled", (_event, ctx) => panel.finishActivity(ctx));
+	pi.on("turn_start", (_event, ctx) => panel.startTurn(ctx));
+	pi.on("message_start", (event, ctx) => panel.startMessage(ctx, event.message));
+	pi.on("message_update", (event, ctx) => panel.updateMessage(ctx, event.assistantMessageEvent));
+	pi.on("message_end", (event, ctx) => panel.endMessage(ctx, event.message));
+	pi.on("tool_execution_start", (_event, ctx) => panel.startToolExecution(ctx));
 	pi.on("tool_execution_end", (event, ctx) => {
+		panel.endToolExecution(ctx);
 		if (event.toolName !== TODO_WRITE_TOOL_NAME || event.isError) return;
 		const result = event.result as { details?: unknown };
 		const details = parseTodoWriteDetails(result.details);
