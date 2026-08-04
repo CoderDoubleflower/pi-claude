@@ -1,11 +1,13 @@
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import type { Usage } from "@earendil-works/pi-ai/compat";
 import { type Component, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import type { AgentSession } from "../../../core/agent-session.ts";
 import { areExperimentalFeaturesEnabled } from "../../../core/experimental.ts";
 import type { ReadonlyFooterDataProvider } from "../../../core/footer-data-provider.ts";
+import { buildStatusLineCommandInput, StatusLineCommandRunner } from "../../../core/status-line.ts";
 import { addUsageToTotals, createUsageTotals } from "../../../core/usage-totals.ts";
-import { installClaudeStartupHeaderUpgrade } from "./claude-startup-compat.ts";
 import { theme } from "../theme/theme.ts";
+import { installClaudeStartupHeaderUpgrade } from "./claude-startup-compat.ts";
 
 /**
  * Sanitize text for display in a single-line status.
@@ -17,6 +19,19 @@ function sanitizeStatusText(text: string): string {
 		.replace(/[\r\n\t]/g, " ")
 		.replace(/ +/g, " ")
 		.trim();
+}
+
+export function appendExtensionStatuses(
+	lines: string[],
+	extensionStatuses: ReadonlyMap<string, string>,
+	width: number,
+): string[] {
+	if (extensionStatuses.size === 0) return lines;
+	const sortedStatuses = Array.from(extensionStatuses.entries())
+		.sort(([a], [b]) => a.localeCompare(b))
+		.map(([, text]) => sanitizeStatusText(text));
+	const statusLine = sortedStatuses.join(" ");
+	return [...lines, truncateToWidth(statusLine, width, theme.fg("dim", "..."))];
 }
 
 /**
@@ -53,27 +68,28 @@ export class FooterComponent implements Component {
 	private session: AgentSession;
 	private footerData: ReadonlyFooterDataProvider;
 	private startupHeaderUpgradeCleanup: (() => void) | undefined;
+	private statusLineRunner: StatusLineCommandRunner;
+	private sessionStartedAt = Date.now();
 
-	constructor(session: AgentSession, footerData: ReadonlyFooterDataProvider) {
+	constructor(session: AgentSession, footerData: ReadonlyFooterDataProvider, requestRender: () => void = () => {}) {
 		this.session = session;
 		this.footerData = footerData;
+		this.statusLineRunner = new StatusLineCommandRunner(requestRender);
 		this.startupHeaderUpgradeCleanup = installClaudeStartupHeaderUpgrade(() => this.session);
 	}
 
 	setSession(session: AgentSession): void {
 		this.session = session;
+		this.sessionStartedAt = Date.now();
+		this.statusLineRunner.invalidate();
 	}
 
 	setAutoCompactEnabled(enabled: boolean): void {
 		this.autoCompactEnabled = enabled;
 	}
 
-	/**
-	 * No-op: git branch caching now handled by provider.
-	 * Kept for compatibility with existing call sites in interactive-mode.
-	 */
 	invalidate(): void {
-		// No-op: git branch is cached/invalidated by provider
+		this.statusLineRunner.invalidate();
 	}
 
 	/**
@@ -81,6 +97,7 @@ export class FooterComponent implements Component {
 	 * Git watcher cleanup now handled by provider.
 	 */
 	dispose(): void {
+		this.statusLineRunner.dispose();
 		this.startupHeaderUpgradeCleanup?.();
 		this.startupHeaderUpgradeCleanup = undefined;
 	}
@@ -91,9 +108,11 @@ export class FooterComponent implements Component {
 		// Calculate cumulative usage from ALL session entries (not just post-compaction messages)
 		const usageTotals = createUsageTotals();
 		let latestCacheHitRate: number | undefined;
+		let latestAssistantUsage: Usage | undefined;
 
 		for (const entry of this.session.sessionManager.getEntries()) {
 			if (entry.type === "message" && entry.message.role === "assistant") {
+				latestAssistantUsage = entry.message.usage;
 				addUsageToTotals(usageTotals, entry.message.usage);
 
 				const latestPromptTokens =
@@ -231,19 +250,28 @@ export class FooterComponent implements Component {
 		const dimRemainder = theme.fg("dim", remainder);
 
 		const pwdLine = truncateToWidth(theme.fg("dim", pwd), width, theme.fg("dim", "..."));
-		const lines = [pwdLine, dimStatsLeft + dimRemainder];
+		const statusLineSettings = this.session.settingsManager.getStatusLine();
+		const customStatusLine = statusLineSettings
+			? this.statusLineRunner.update(statusLineSettings, {
+					input: buildStatusLineCommandInput({
+						session: this.session,
+						footerData: this.footerData,
+						usageTotals,
+						latestUsage: latestAssistantUsage,
+						contextUsage,
+						totalDurationMs: Date.now() - this.sessionStartedAt,
+					}),
+					cwd: this.session.sessionManager.getCwd(),
+					columns: width,
+				})
+			: this.statusLineRunner.update(undefined);
+		const lines = customStatusLine
+			? customStatusLine.lines.map((line) => {
+					const padding = " ".repeat(Math.min(customStatusLine.padding, Math.max(0, width - 1)));
+					return `${padding}${truncateToWidth(line, Math.max(1, width - visibleWidth(padding)), "")}`;
+				})
+			: [pwdLine, dimStatsLeft + dimRemainder];
 
-		// Add extension statuses on a single line, sorted by key alphabetically
-		const extensionStatuses = this.footerData.getExtensionStatuses();
-		if (extensionStatuses.size > 0) {
-			const sortedStatuses = Array.from(extensionStatuses.entries())
-				.sort(([a], [b]) => a.localeCompare(b))
-				.map(([, text]) => sanitizeStatusText(text));
-			const statusLine = sortedStatuses.join(" ");
-			// Truncate to terminal width with dim ellipsis for consistency with footer style
-			lines.push(truncateToWidth(statusLine, width, theme.fg("dim", "...")));
-		}
-
-		return lines;
+		return appendExtensionStatuses(lines, this.footerData.getExtensionStatuses(), width);
 	}
 }

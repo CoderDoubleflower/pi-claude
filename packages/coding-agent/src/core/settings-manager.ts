@@ -58,6 +58,13 @@ export interface MarkdownSettings {
 	codeBlockIndent?: string; // default: "  "
 }
 
+export interface StatusLineSettings {
+	type: "command";
+	command: string;
+	padding?: number;
+	refreshInterval?: number;
+}
+
 export interface WarningSettings {
 	anthropicExtraUsage?: boolean; // default: true
 }
@@ -92,6 +99,7 @@ export interface Settings {
 	steeringMode?: "all" | "one-at-a-time";
 	followUpMode?: "all" | "one-at-a-time";
 	theme?: string;
+	statusLine?: StatusLineSettings;
 	compaction?: CompactionSettings;
 	branchSummary?: BranchSummarySettings;
 	retry?: RetrySettings;
@@ -740,6 +748,34 @@ export class SettingsManager {
 		this.globalSettings.theme = theme;
 		this.markModified("theme");
 		this.save();
+	}
+
+	getStatusLine(): StatusLineSettings | undefined {
+		const statusLine = this.settings.statusLine;
+		if (
+			!statusLine ||
+			statusLine.type !== "command" ||
+			typeof statusLine.command !== "string" ||
+			statusLine.command.trim().length === 0
+		) {
+			return undefined;
+		}
+
+		const padding =
+			typeof statusLine.padding === "number" && Number.isFinite(statusLine.padding)
+				? Math.max(0, Math.floor(statusLine.padding))
+				: undefined;
+		const refreshInterval =
+			typeof statusLine.refreshInterval === "number" && Number.isFinite(statusLine.refreshInterval)
+				? Math.max(1, Math.floor(statusLine.refreshInterval))
+				: undefined;
+
+		return {
+			type: "command",
+			command: statusLine.command,
+			...(padding !== undefined && { padding }),
+			...(refreshInterval !== undefined && { refreshInterval }),
+		};
 	}
 
 	getDefaultThinkingLevel(): ThinkingLevel | undefined {
