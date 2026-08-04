@@ -29,7 +29,9 @@ describe("ClaudeStartupComponent", () => {
 			cwd: "/tmp/example-project",
 		}));
 
-		const lines = plain(component.render(72));
+		const rendered = component.render(72);
+		expect(rendered[0]).toMatch(/\x1b\[38;(?:2;215;135;135|5;174)m/);
+		const lines = plain(rendered);
 		expect(lines).toHaveLength(3);
 		expect(lines[0]).toContain("▐▛███▜▌");
 		expect(lines[0]).toContain("pi-claude v0.83.9");

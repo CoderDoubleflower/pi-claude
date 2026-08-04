@@ -1,12 +1,21 @@
 import { Editor, type EditorOptions, type EditorTheme, type TUI } from "@earendil-works/pi-tui";
 import type { AppKeybinding, KeybindingsManager } from "../../../core/keybindings.ts";
 import { stripAnsi } from "../../../utils/ansi.ts";
+import { theme as appTheme } from "../theme/theme.ts";
 
 const PROMPT_PREFIX_WIDTH = 2;
+const MENU_SELECTED_TRUECOLOR = "\x1b[38;2;152;186;220m";
+const MENU_SELECTED_256COLOR = "\x1b[38;5;110m";
+const FOREGROUND_RESET = "\x1b[39m";
 
 function isEditorBorderLine(line: string): boolean {
 	const plain = stripAnsi(line);
 	return /^─+$/.test(plain) || /^─── [↑↓] \d+ more /.test(plain);
+}
+
+function colorSelectedMenuText(text: string): string {
+	const color = appTheme.getColorMode() === "truecolor" ? MENU_SELECTED_TRUECOLOR : MENU_SELECTED_256COLOR;
+	return `${color}${text}${FOREGROUND_RESET}`;
 }
 
 /**
@@ -23,8 +32,19 @@ export class CustomEditor extends Editor {
 	/** Handler for extension-registered shortcuts. Returns true if handled. */
 	public onExtensionShortcut?: (data: string) => boolean;
 
-	constructor(tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager, options?: EditorOptions) {
-		super(tui, theme, options);
+	constructor(tui: TUI, editorTheme: EditorTheme, keybindings: KeybindingsManager, options?: EditorOptions) {
+		super(
+			tui,
+			{
+				...editorTheme,
+				selectList: {
+					...editorTheme.selectList,
+					selectedPrefix: colorSelectedMenuText,
+					selectedText: colorSelectedMenuText,
+				},
+			},
+			options,
+		);
 		this.keybindings = keybindings;
 	}
 
@@ -51,8 +71,7 @@ export class CustomEditor extends Editor {
 		const continuationPrefix = " ".repeat(PROMPT_PREFIX_WIDTH);
 		const promptPrefix = `${this.borderColor("❯")} `;
 		const firstLogicalLineIsVisible = !stripAnsi(lines[0] ?? "").includes("↑");
-
-		return lines.map((line, index) => {
+		const rendered = lines.map((line, index) => {
 			if (index === 0 || index === bottomBorderIndex) {
 				return `${line}${borderExtension}`;
 			}
@@ -62,6 +81,14 @@ export class CustomEditor extends Editor {
 			// Autocomplete rows align with the editable content, not the marker.
 			return `${continuationPrefix}${line}`;
 		});
+
+		// Editor renders autocomplete after the bottom border. Move those rows
+		// above the editor so the menu opens upward without changing cursor math.
+		const autocompleteStart = bottomBorderIndex + 1;
+		if (autocompleteStart < rendered.length) {
+			return [...rendered.slice(autocompleteStart), ...rendered.slice(0, autocompleteStart)];
+		}
+		return rendered;
 	}
 
 	/**

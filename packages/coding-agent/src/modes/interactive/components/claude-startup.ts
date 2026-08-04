@@ -6,10 +6,12 @@ import { theme } from "../theme/theme.ts";
 const CLAWD_WIDTH = 9;
 const INFO_GAP = 2;
 const MIN_HORIZONTAL_INFO_WIDTH = 12;
+const CLAWD_TRUECOLOR = "\x1b[38;2;215;135;135m";
+const CLAWD_256COLOR = "\x1b[38;5;174m";
+const FOREGROUND_RESET = "\x1b[39m";
 
-// Claude Code 2.1.88's default condensed Clawd pose. The source component
-// renders the eye/body spans separately to control foreground/background
-// colors; pi-tui gets the same silhouette with the active accent color.
+// Claude Code 2.1.88's default condensed Clawd pose. Keep the silhouette
+// independent from the active theme so the startup identity uses #d78787.
 const CLAWD_ROWS = [" ▐▛███▜▌", "▝▜█████▛▘", "  ▘▘ ▝▝  "] as const;
 
 export interface ClaudeStartupModel {
@@ -27,6 +29,11 @@ export interface ClaudeStartupSnapshot {
 	modelLine?: string;
 	thinkingLevel?: string;
 	cwd: string;
+}
+
+function colorClawd(text: string): string {
+	const color = theme.getColorMode() === "truecolor" ? CLAWD_TRUECOLOR : CLAWD_256COLOR;
+	return `${color}${text}${FOREGROUND_RESET}`;
 }
 
 function sanitizeSingleLine(value: string): string {
@@ -122,7 +129,7 @@ export class ClaudeStartupComponent implements Component {
 		const cwd = theme.fg("dim", truncateFromLeft(formatCwd(snapshot.cwd), infoWidth));
 		const infoRows = [title, model, cwd];
 
-		const clawdRows = CLAWD_ROWS.map((row) => theme.fg("accent", row.padEnd(CLAWD_WIDTH)));
+		const clawdRows = CLAWD_ROWS.map((row) => colorClawd(row.padEnd(CLAWD_WIDTH)));
 		if (!useHorizontalLayout) {
 			return [
 				...clawdRows.map((row) => truncateToWidth(row, width, "")),

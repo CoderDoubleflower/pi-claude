@@ -18,6 +18,23 @@ const visibleIndexOf = (line: string, text: string): number => {
 };
 
 describe("SelectList", () => {
+	it("renders selected rows without an arrow and styles the description with the row", () => {
+		const list = new SelectList(
+			[{ value: "help", label: "/help", description: "Show available commands" }],
+			5,
+			{
+				...testTheme,
+				selectedText: (text: string) => `<selected>${text}</selected>`,
+			},
+		);
+
+		const [selectedRow] = list.render(80);
+		assert.ok(selectedRow);
+		assert.ok(!selectedRow.includes("→"));
+		assert.ok(selectedRow.startsWith("<selected>  /help"));
+		assert.ok(selectedRow.includes("Show available commands</selected>"));
+	});
+
 	it("normalizes multiline descriptions to single line", () => {
 		const items = [
 			{
