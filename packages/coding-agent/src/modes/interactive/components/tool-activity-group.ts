@@ -49,10 +49,10 @@ function cleanCommandHint(command: string): string {
 	const cleaned =
 		"$ " +
 		command
-			.split("\n")
+			.split(/\r\n|\r|\n/)
 			.map((line) => line.replace(/\s+/g, " ").trim())
 			.filter(Boolean)
-			.join("\n");
+			.join(" ");
 	return cleaned.length > MAX_HINT_CHARS ? `${cleaned.slice(0, MAX_HINT_CHARS - 1)}…` : cleaned;
 }
 
