@@ -3,6 +3,8 @@ name: Validate PR 56
 on:
   push:
     branches: [feat/claude-running-status-todo-tree]
+  pull_request:
+    branches: [main]
 
 jobs:
   focused-validation:
