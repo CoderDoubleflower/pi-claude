@@ -9,10 +9,10 @@ import {
 	type TodoItem,
 } from "../core/tools/todo-write.ts";
 import {
-	encodeClaudeRunningMessage,
-	ensureClaudeWorkingEllipsis,
 	type ClaudeThinkingStatus,
 	type ClaudeWorkingMode,
+	encodeClaudeRunningMessage,
+	ensureClaudeWorkingEllipsis,
 } from "../modes/interactive/components/claude-running-status.ts";
 import type { Theme } from "../modes/interactive/theme/theme.ts";
 
