@@ -178,7 +178,7 @@ describe("Claude-style todo panel", () => {
 
 		const first = createAssistantMessage("a".repeat(4000));
 		manager.startMessage(fake.ctx, first);
-		vi.advanceTimersByTime(4000);
+		vi.advanceTimersByTime(6000);
 		expect(getRunningStatus(fake)?.responseCharacters).toBe(4000);
 		manager.endMessage(fake.ctx, first);
 
@@ -187,7 +187,7 @@ describe("Claude-style todo panel", () => {
 
 		const second = createAssistantMessage("b".repeat(4000));
 		manager.startMessage(fake.ctx, second);
-		vi.advanceTimersByTime(4000);
+		vi.advanceTimersByTime(6000);
 		expect(getRunningStatus(fake)?.responseCharacters).toBe(8000);
 		manager.endMessage(fake.ctx, second);
 		manager.finishActivity(fake.ctx);
