@@ -83,9 +83,9 @@ describe("Claude todo tree connector", () => {
 		initTheme("dark");
 		const lines = new TodoPanelComponent(todos, theme, () => 24, false).render(100).map(stripAnsi);
 
-		expect(lines[0]).toMatch(/^  ⎿ [✔√] Record the environment baseline/);
-		expect(lines[1]).toMatch(/^    [✔√] Validate the test entry point/);
-		expect(lines[2]).toMatch(/^    [◼■] Summarize the environment results/);
+		expect(lines[0]).toMatch(/^ {2}⎿ [✔√] Record the environment baseline/);
+		expect(lines[1]).toMatch(/^ {4}[✔√] Validate the test entry point/);
+		expect(lines[2]).toMatch(/^ {4}[◼■] Summarize the environment results/);
 		expect(lines.slice(1).join("\n")).not.toContain("⎿");
 	});
 });
