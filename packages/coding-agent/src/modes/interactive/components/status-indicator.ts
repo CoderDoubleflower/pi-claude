@@ -1,5 +1,11 @@
 import { type Component, Loader, type TUI } from "@earendil-works/pi-tui";
 import type { WorkingIndicatorOptions } from "../../../core/extensions/index.ts";
+import {
+	colorClaudeRunningMessage,
+	decodeClaudeRunningMessage,
+	formatClaudeRunningMessage,
+	type ClaudeRunningStatusSnapshot,
+} from "./claude-running-status.ts";
 import { theme } from "../theme/theme.ts";
 import { CLAUDE_WORKING_INDICATOR, colorClaudeWorkingText, createClaudeWorkingMessage } from "./claude-working.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
@@ -46,22 +52,43 @@ export class StatusIndicator extends Loader {
 
 export class WorkingStatusIndicator extends StatusIndicator {
 	private readonly defaultMessage: string;
+	private baseMessage: string;
+	private runningStatus: ClaudeRunningStatusSnapshot | undefined;
+	private renderedMessage: string;
 
 	constructor(ui: TUI, message?: string, indicator?: WorkingIndicatorOptions) {
 		const defaultMessage = createClaudeWorkingMessage();
+		const decoded = decodeClaudeRunningMessage(message ?? LEGACY_DEFAULT_WORKING_MESSAGE);
+		const baseMessage = resolveWorkingMessage(decoded.message, defaultMessage);
 		super(
 			"working",
 			ui,
 			colorClaudeWorkingText,
-			colorClaudeWorkingText,
-			resolveWorkingMessage(message, defaultMessage),
+			colorClaudeRunningMessage,
+			baseMessage,
 			indicator ?? CLAUDE_WORKING_INDICATOR,
 		);
 		this.defaultMessage = defaultMessage;
+		this.baseMessage = baseMessage;
+		this.runningStatus = decoded.status;
+		this.renderedMessage = baseMessage;
 	}
 
 	override setMessage(message: string): void {
-		super.setMessage(resolveWorkingMessage(message, this.defaultMessage));
+		const decoded = decodeClaudeRunningMessage(message);
+		this.baseMessage = resolveWorkingMessage(decoded.message, this.defaultMessage);
+		this.runningStatus = decoded.status;
+		this.renderedMessage = this.baseMessage;
+		super.setMessage(this.renderedMessage);
+	}
+
+	override render(width: number): string[] {
+		const formattedMessage = formatClaudeRunningMessage(this.baseMessage, this.runningStatus, width);
+		if (formattedMessage !== this.renderedMessage) {
+			this.renderedMessage = formattedMessage;
+			super.setMessage(formattedMessage, false);
+		}
+		return super.render(width);
 	}
 }
 
