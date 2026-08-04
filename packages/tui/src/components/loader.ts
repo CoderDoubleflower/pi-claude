@@ -56,9 +56,9 @@ export class Loader extends Text {
 		}
 	}
 
-	setMessage(message: string): void {
+	setMessage(message: string, requestRender = true): void {
 		this.message = message;
-		this.updateDisplay();
+		this.updateDisplay(requestRender);
 	}
 
 	setIndicator(indicator?: LoaderIndicatorOptions): void {
@@ -80,12 +80,12 @@ export class Loader extends Text {
 		}, this.intervalMs);
 	}
 
-	private updateDisplay(): void {
+	private updateDisplay(requestRender = true): void {
 		const frame = this.frames[this.currentFrame] ?? "";
 		const renderedFrame = this.renderIndicatorVerbatim ? frame : this.spinnerColorFn(frame);
 		const indicator = frame.length > 0 ? `${renderedFrame} ` : "";
 		this.setText(`${indicator}${this.messageColorFn(this.message)}`);
-		if (this.ui) {
+		if (requestRender && this.ui) {
 			this.ui.requestRender();
 		}
 	}
