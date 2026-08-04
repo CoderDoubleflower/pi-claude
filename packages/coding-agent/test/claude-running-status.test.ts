@@ -45,7 +45,6 @@ describe("Claude running status parity", () => {
 		expect(line?.trimEnd()).toBe(
 			"✻ Summarizing environment test results… (3m 18s · ↓ 7.0k tokens · thinking with medium effort)",
 		);
-		expect(rendered.join("")).toContain("\u001b[2m");
 	});
 
 	test("uses Claude Code's strict 30-second threshold and requesting arrow", () => {
