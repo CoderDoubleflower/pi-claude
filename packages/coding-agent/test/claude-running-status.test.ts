@@ -12,7 +12,7 @@ import { initTheme, theme } from "../src/modes/interactive/theme/theme.ts";
 import { stripAnsi } from "../src/utils/ansi.ts";
 
 function createTui(): TUI {
-	return { requestRender() {} } as unknown as TUI;
+	return { requestRender() {}, terminal: { rows: 24 } } as unknown as TUI;
 }
 
 const todos: TodoItem[] = [
@@ -74,6 +74,31 @@ describe("Claude running status parity", () => {
 			22,
 		);
 		expect(message).toBe("Working… (thinking)");
+	});
+
+	test("renders the todo connector on the row immediately after the spinner", () => {
+		initTheme("dark");
+		const indicator = new WorkingStatusIndicator(
+			createTui(),
+			encodeClaudeRunningMessage(
+				{
+					elapsedMs: 198_000,
+					responseCharacters: 28_000,
+					mode: "thinking",
+					thinkingStatus: "thinking",
+					effortLevel: "medium",
+					todos,
+				},
+				"Summarizing environment test results…",
+			),
+			{ frames: ["✻"] },
+		);
+		const lines = indicator.render(140).map(stripAnsi);
+		indicator.dispose();
+
+		const spinnerIndex = lines.findIndex((line) => line.includes("Summarizing environment test results"));
+		expect(spinnerIndex).toBeGreaterThanOrEqual(0);
+		expect(lines[spinnerIndex + 1]).toMatch(/^ {2}⎿ [✔√] Record the environment baseline/);
 	});
 });
 
