@@ -1,0 +1,30 @@
+name: Validate multiline tool hint
+
+on:
+  push:
+    branches:
+      - fix/fullscreen-multiline-tool-hint
+  pull_request:
+    paths:
+      - packages/coding-agent/src/modes/interactive/components/tool-activity-group.ts
+      - packages/coding-agent/test/tool-activity-group.test.ts
+      - .github/workflows/validate-multiline-tool-hint.yml
+
+permissions:
+  contents: read
+
+jobs:
+  focused-test:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+      - name: Run focused regression
+        run: npx vitest --run packages/coding-agent/test/tool-activity-group.test.ts
