@@ -276,7 +276,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, undefined);
 			return;
 		}
-		ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, planModeColor(ctx.ui.theme, "⏸ plan"));
+		ctx.ui.setStatus(PLAN_MODE_STATUS_KEY, planModeColor(ctx.ui.theme, "⏸ plan mode on"));
 	}
 
 	function ensurePlanIdentity(ctx: ExtensionContext): void {
