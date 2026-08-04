@@ -36,12 +36,7 @@ jobs:
         run: npm run build
 
       - name: Check
-        continue-on-error: true
         run: npm run check
 
-      - name: Focused plan-mode tests
-        run: >-
-          npx vitest --run
-          packages/coding-agent/test/plan-mode-session-handoff.test.ts
-          packages/coding-agent/test/plan-mode-clear-context-termination.test.ts
-          packages/coding-agent/test/plan-mode.test.ts
+      - name: Test
+        run: npm test
