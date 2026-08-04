@@ -1,0 +1,64 @@
+name: Validate status line feature branch
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/status-line-branch-builder.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build-feature-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/claude-compatible-status-line
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.19.0
+          cache: npm
+
+      - run: npm ci --ignore-scripts
+
+      - name: Apply patches
+        run: python3 scripts/apply-status-line-existing-files.py
+
+      - name: Format changed files
+        run: >-
+          npx biome check --write
+          packages/coding-agent/src/core/settings-manager.ts
+          packages/coding-agent/src/core/status-line.ts
+          packages/coding-agent/src/modes/interactive/components/footer.ts
+          packages/coding-agent/src/modes/interactive/interactive-mode.ts
+          packages/coding-agent/test/status-line.test.ts
+
+      - name: Run focused tests
+        working-directory: packages/coding-agent
+        run: node ../../node_modules/vitest/dist/cli.js --run test/status-line.test.ts
+
+      - name: Build workspace
+        run: npm run build:offline
+
+      - name: Commit validated implementation
+        shell: bash
+        run: |
+          rm -f .github/workflows/status-line-implementation.yml
+          rm scripts/apply-status-line-existing-files.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/coding-agent/src/core/settings-manager.ts \
+            packages/coding-agent/src/core/status-line.ts \
+            packages/coding-agent/src/modes/interactive/components/footer.ts \
+            packages/coding-agent/src/modes/interactive/interactive-mode.ts \
+            packages/coding-agent/docs/settings.md \
+            packages/coding-agent/test/status-line.test.ts \
+            .github/workflows/status-line-implementation.yml \
+            scripts/apply-status-line-existing-files.py
+          git commit -m "feat(coding-agent): add Claude-compatible status line"
+          git push origin HEAD:feat/claude-compatible-status-line
