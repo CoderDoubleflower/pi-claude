@@ -49,3 +49,5 @@ jobs:
           git add -A
           git commit -m "fix(coding-agent): detach and name clean plan sessions"
           git push origin "HEAD:${GITHUB_REF_NAME}"
+
+# Trigger after workflow registration.
