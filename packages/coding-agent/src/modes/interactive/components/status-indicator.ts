@@ -1,12 +1,12 @@
 import { type Component, Loader, type TUI } from "@earendil-works/pi-tui";
 import type { WorkingIndicatorOptions } from "../../../core/extensions/index.ts";
+import { theme } from "../theme/theme.ts";
 import {
+	type ClaudeRunningStatusSnapshot,
 	colorClaudeRunningMessage,
 	decodeClaudeRunningMessage,
 	formatClaudeRunningMessage,
-	type ClaudeRunningStatusSnapshot,
 } from "./claude-running-status.ts";
-import { theme } from "../theme/theme.ts";
 import { CLAUDE_WORKING_INDICATOR, colorClaudeWorkingText, createClaudeWorkingMessage } from "./claude-working.ts";
 import { CountdownTimer } from "./countdown-timer.ts";
 import { keyText } from "./keybinding-hints.ts";
