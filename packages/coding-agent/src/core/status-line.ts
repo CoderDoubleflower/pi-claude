@@ -205,7 +205,14 @@ export class StatusLineCommandRunner {
 			this.configureRefresh(settings.refreshInterval);
 		}
 
-		const signature = JSON.stringify([configSignature, request.columns, request.input]);
+		const signatureInput = {
+			...request.input,
+			cost: {
+				...request.input.cost,
+				total_duration_ms: 0,
+			},
+		};
+		const signature = JSON.stringify([configSignature, request.columns, signatureInput]);
 		this.latestRequest = { settings, ...request, signature };
 		if (signature !== this.scheduledSignature) {
 			this.scheduledSignature = signature;

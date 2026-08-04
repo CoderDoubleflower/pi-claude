@@ -114,6 +114,61 @@ process.stdin.on("end", () => {
 			rmSync(directory, { recursive: true, force: true });
 		}
 	});
+
+	it("does not re-run solely because elapsed duration changed", async () => {
+		const directory = mkdtempSync(join(tmpdir(), "pi-status-line-duration-"));
+		const scriptPath = join(directory, "statusline-duration.mjs");
+		writeFileSync(
+			scriptPath,
+			`let input = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", chunk => input += chunk);
+process.stdin.on("end", () => {
+  const value = JSON.parse(input);
+  process.stdout.write(String(value.cost.total_duration_ms));
+});
+`,
+		);
+		chmodSync(scriptPath, 0o755);
+
+		let renderCount = 0;
+		let resolveFirstRender: (() => void) | undefined;
+		const firstRendered = new Promise<void>((resolve) => {
+			resolveFirstRender = resolve;
+		});
+		const runner = new StatusLineCommandRunner(() => {
+			renderCount += 1;
+			if (renderCount === 1) resolveFirstRender?.();
+		});
+		const command = `${JSON.stringify(process.execPath)} ${JSON.stringify(scriptPath)}`;
+		const settings = { type: "command" as const, command };
+		const initialRequest = { input, cwd: process.cwd(), columns: 80 };
+
+		try {
+			runner.update(settings, initialRequest);
+			await Promise.race([
+				firstRendered,
+				new Promise<never>((_, reject) => setTimeout(() => reject(new Error("status line timed out")), 3000)),
+			]);
+
+			const updatedInput = {
+				...input,
+				cost: { ...input.cost, total_duration_ms: 1000 },
+			};
+			const result = runner.update(settings, {
+				input: updatedInput,
+				cwd: process.cwd(),
+				columns: 80,
+			});
+			await new Promise((resolve) => setTimeout(resolve, 600));
+
+			expect(renderCount).toBe(1);
+			expect(result.lines).toEqual(["0"]);
+		} finally {
+			runner.dispose();
+			rmSync(directory, { recursive: true, force: true });
+		}
+	});
 });
 
 describe("footer status composition", () => {
