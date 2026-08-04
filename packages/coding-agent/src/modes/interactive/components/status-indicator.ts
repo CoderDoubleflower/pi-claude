@@ -96,13 +96,7 @@ export class WorkingStatusIndicator extends StatusIndicator {
 		if (!todos || todos.length === 0) return lines;
 
 		const completionTimestamps = new Map(this.runningStatus?.completionTimestamps ?? []);
-		const todoPanel = new TodoPanelComponent(
-			todos,
-			theme,
-			() => this.tui.terminal.rows,
-			false,
-			completionTimestamps,
-		);
+		const todoPanel = new TodoPanelComponent(todos, theme, () => this.tui.terminal.rows, false, completionTimestamps);
 		return [...lines, ...todoPanel.render(width)];
 	}
 }
