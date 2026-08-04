@@ -170,6 +170,7 @@ import {
 	theme,
 } from "./theme/theme.ts";
 import { InteractiveThemeController } from "./theme/theme-controller.ts";
+import { getToolActivityEdgeBoundaries, getToolActivityStreamActions } from "./tool-activity-boundaries.ts";
 
 /** Interface for components that can be expanded/collapsed */
 interface Expandable {
@@ -3071,11 +3072,12 @@ export class InteractiveMode {
 					this.streamingMessage = event.message;
 					this.streamingComponent.updateContent(this.streamingMessage, true);
 
-					for (const content of this.streamingMessage.content) {
-						if (content.type === "text" && content.text.trim().length > 0) {
+					for (const action of getToolActivityStreamActions(this.streamingMessage.content)) {
+						if (action.type === "break") {
 							if (typeof this.breakToolActivityGroup === "function") this.breakToolActivityGroup();
 							continue;
 						}
+						const content = action.content;
 						if (content.type === "toolCall") {
 							if (!this.pendingTools.has(content.id)) {
 								const component = new ToolExecutionComponent(
@@ -3581,23 +3583,8 @@ export class InteractiveMode {
 			const message = item;
 			// Assistant messages need special handling for tool calls
 			if (message.role === "assistant") {
-				const firstToolIndex = message.content.findIndex((content) => content.type === "toolCall");
-				let lastToolIndex = -1;
-				for (let index = message.content.length - 1; index >= 0; index -= 1) {
-					if (message.content[index]?.type === "toolCall") {
-						lastToolIndex = index;
-						break;
-					}
-				}
-				const hasTextBeforeTools = message.content
-					.slice(0, firstToolIndex < 0 ? message.content.length : firstToolIndex)
-					.some((content) => content.type === "text" && content.text.trim().length > 0);
-				const hasTextAfterTools =
-					lastToolIndex >= 0 &&
-					message.content
-						.slice(lastToolIndex + 1)
-						.some((content) => content.type === "text" && content.text.trim().length > 0);
-				if (firstToolIndex < 0 || hasTextBeforeTools) this.breakToolActivityGroup();
+				const { hasToolCalls, breakBeforeTools, breakAfterTools } = getToolActivityEdgeBoundaries(message.content);
+				if (!hasToolCalls || breakBeforeTools) this.breakToolActivityGroup();
 				this.addMessageToChat(message);
 				for (const content of message.content) {
 					if (content.type === "toolCall") {
@@ -3639,7 +3626,7 @@ export class InteractiveMode {
 						}
 					}
 				}
-				if (hasTextAfterTools) this.breakToolActivityGroup();
+				if (breakAfterTools) this.breakToolActivityGroup();
 				if (message.stopReason !== "aborted" && message.stopReason !== "error") {
 					const miss = cacheMisses.get(message);
 					if (miss) this.addCacheMissNotice(miss);
