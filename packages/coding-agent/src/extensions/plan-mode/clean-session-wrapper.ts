@@ -59,13 +59,17 @@ function normalizePlanExecutionSessionName(value: string): string {
 	return `${characters.slice(0, PLAN_EXECUTION_SESSION_NAME_MAX_LENGTH - 1).join("")}…`;
 }
 
+function isGenericPlanHeading(value: string): boolean {
+	return /^(?:implementation\s+)?plan$/i.test(value);
+}
+
 export function buildPlanExecutionSessionName(plan: string, sourceSessionTitle?: string): string {
 	const planLines = plan.split(/\r?\n/);
-	const candidates = [
-		sourceSessionTitle,
-		...planLines.filter((line) => /^\s{0,3}#{1,6}\s+\S/.test(line)),
-		...planLines,
-	];
+	const headingCandidates = planLines
+		.filter((line) => /^\s{0,3}#{1,6}\s+\S/.test(line))
+		.map(normalizePlanExecutionSessionName)
+		.filter((line) => line && !isGenericPlanHeading(line));
+	const candidates = [...headingCandidates, sourceSessionTitle, ...planLines];
 	for (const candidate of candidates) {
 		if (!candidate) continue;
 		const normalized = normalizePlanExecutionSessionName(candidate);
@@ -81,7 +85,8 @@ function withIndependentExecutionSession(ctx: ExtensionContext, executionSession
 	return {
 		...ctx,
 		newSession: async (options) => {
-			const { parentSession: _discardedParentSession, setup, ...independentOptions } = options ?? {};
+			const { parentSession: discardedParentSession, setup, ...independentOptions } = options ?? {};
+			void discardedParentSession;
 			return startFreshSession({
 				...independentOptions,
 				setup: async (sessionManager) => {
