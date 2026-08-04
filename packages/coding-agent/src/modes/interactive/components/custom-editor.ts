@@ -1,4 +1,10 @@
-import { Editor, type EditorOptions, type EditorTheme, type TUI } from "@earendil-works/pi-tui";
+import {
+	type AutocompleteProvider,
+	Editor,
+	type EditorOptions,
+	type EditorTheme,
+	type TUI,
+} from "@earendil-works/pi-tui";
 import type { AppKeybinding, KeybindingsManager } from "../../../core/keybindings.ts";
 import { stripAnsi } from "../../../utils/ansi.ts";
 import { theme as appTheme } from "../theme/theme.ts";
@@ -16,6 +22,31 @@ function isEditorBorderLine(line: string): boolean {
 function colorSelectedMenuText(text: string): string {
 	const color = appTheme.getColorMode() === "truecolor" ? MENU_SELECTED_TRUECOLOR : MENU_SELECTED_256COLOR;
 	return `${color}${text}${FOREGROUND_RESET}`;
+}
+
+function withSlashCommandMenuLabels(provider: AutocompleteProvider): AutocompleteProvider {
+	const shouldTriggerFileCompletion = provider.shouldTriggerFileCompletion?.bind(provider);
+	return {
+		...(provider.triggerCharacters && { triggerCharacters: provider.triggerCharacters }),
+		async getSuggestions(lines, cursorLine, cursorCol, options) {
+			const suggestions = await provider.getSuggestions(lines, cursorLine, cursorCol, options);
+			if (!suggestions || !suggestions.prefix.startsWith("/") || suggestions.prefix.includes(" ")) {
+				return suggestions;
+			}
+
+			return {
+				...suggestions,
+				items: suggestions.items.map((item) => ({
+					...item,
+					label: item.label.startsWith("/") ? item.label : `/${item.label}`,
+				})),
+			};
+		},
+		applyCompletion(lines, cursorLine, cursorCol, item, prefix) {
+			return provider.applyCompletion(lines, cursorLine, cursorCol, item, prefix);
+		},
+		...(shouldTriggerFileCompletion && { shouldTriggerFileCompletion }),
+	};
 }
 
 /**
@@ -46,6 +77,10 @@ export class CustomEditor extends Editor {
 			options,
 		);
 		this.keybindings = keybindings;
+	}
+
+	override setAutocompleteProvider(provider: AutocompleteProvider): void {
+		super.setAutocompleteProvider(withSlashCommandMenuLabels(provider));
 	}
 
 	override render(width: number): string[] {
