@@ -1,0 +1,46 @@
+name: Validate thinking tool boundary
+
+on:
+  push:
+    branches:
+      - fix/thinking-tool-activity-boundary
+    paths:
+      - .github/workflows/validate-thinking-tool-boundary.yml
+
+permissions:
+  contents: write
+
+jobs:
+  coding-agent-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: fix/thinking-tool-activity-boundary
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fd-find ripgrep
+          sudo ln -s $(which fdfind) /usr/local/bin/fd
+          npm ci --ignore-scripts
+
+      - name: Run coding-agent tests
+        run: npm --prefix packages/coding-agent test
+
+      - name: Remove validator after success
+        run: |
+          rm .github/workflows/validate-thinking-tool-boundary.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: remove thinking tool boundary validator"
+          git push origin HEAD:fix/thinking-tool-activity-boundary
