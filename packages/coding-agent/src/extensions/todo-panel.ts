@@ -428,6 +428,8 @@ export class TodoPanelManager {
 					mode: thinkingStatus === "thinking" ? "thinking" : this.activityMode,
 					thinkingStatus,
 					effortLevel: ctx.thinkingLevel,
+					todos: cloneTodos(this.todos),
+					completionTimestamps: [...this.completionTimestamps.entries()],
 				},
 				ensureClaudeWorkingEllipsis(current?.activeForm),
 			),
@@ -488,6 +490,10 @@ export class TodoPanelManager {
 	private render(): void {
 		const ctx = this.context;
 		if (!ctx || ctx.mode !== "tui" || this.todos.length === 0) return;
+		if (this.activityStartedAt !== undefined) {
+			ctx.ui.setWidget(TODO_PANEL_WIDGET_KEY, undefined, { placement: "aboveEditor" });
+			return;
+		}
 		const todos = cloneTodos(this.todos);
 		const standalone = ctx.isIdle();
 		const completionTimestamps = new Map(this.completionTimestamps);
