@@ -52,15 +52,13 @@ current_stage="version startup"
 "$cli" --version
 
 current_stage="interactive startup"
-set +e
+startup_status=0
 startup_output="$(
   timeout --signal=INT --kill-after=5s 4s \
     script --quiet --return --command \
       "env HOME='$smoke_home' TERM=xterm-256color PI_OFFLINE=1 '$cli'" \
       /dev/null 2>&1
-)"
-startup_status=$?
-set -e
+)" || startup_status=$?
 
 printf '%s\n' "$startup_output"
 echo "startup_status=$startup_status"
