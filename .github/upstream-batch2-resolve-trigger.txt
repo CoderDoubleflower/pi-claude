@@ -1,1 +1,1 @@
-Resolve the JSON/RPC protocol changelog overlap.
+Resolve the JSON/RPC protocol changelog overlap v2.
