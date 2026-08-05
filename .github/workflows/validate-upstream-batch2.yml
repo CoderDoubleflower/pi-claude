@@ -27,6 +27,14 @@ jobs:
       - name: Remove temporary branch trigger
         run: git rm -f --ignore-unmatch .github/upstream-batch2-trigger.txt
 
+      - name: Install system test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y fd-find ripgrep
+          sudo ln -sf "$(command -v fdfind)" /usr/local/bin/fd
+
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
@@ -74,6 +82,7 @@ jobs:
           set -euo pipefail
           git reset --hard HEAD
           git clean -fd
+          git rm -f --ignore-unmatch .github/upstream-batch2-trigger.txt
           npm run build
           npm run check
 
