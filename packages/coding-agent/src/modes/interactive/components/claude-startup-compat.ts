@@ -60,11 +60,7 @@ function renderWithTextPadding(component: Text, startup: ClaudeStartupComponent,
 	return [...verticalPadding, ...contentLines, ...verticalPadding];
 }
 
-function decorateLegacyStartupHeader(
-	component: Text,
-	identity: StartupIdentity,
-	getSession: () => AgentSession,
-): void {
+function decorateLegacyStartupHeader(component: Text, identity: StartupIdentity, getSession: () => AgentSession): void {
 	const startup = new ClaudeStartupComponent(() => {
 		const session = getSession();
 		return {

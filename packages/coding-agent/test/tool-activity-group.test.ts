@@ -27,9 +27,7 @@ describe("tool activity group", () => {
 		const lines = group.render(400);
 		expect(lines).toHaveLength(3);
 		expect(lines.every((line) => !/[\r\n]/.test(line))).toBe(true);
-		expect(lines.map(stripAnsi).join("\n")).toContain(
-			'⎿  $ node -e " const value = 1; console.log(value) "',
-		);
+		expect(lines.map(stripAnsi).join("\n")).toContain('⎿  $ node -e " const value = 1; console.log(value) "');
 
 		group.dispose();
 	});

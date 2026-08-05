@@ -2,8 +2,8 @@ import { stripVTControlCharacters } from "node:util";
 import { Container, Text, visibleWidth } from "@earendil-works/pi-tui";
 import { beforeAll, describe, expect, it } from "vitest";
 import type { AgentSession } from "../src/core/agent-session.ts";
-import { installClaudeStartupHeaderUpgrade } from "../src/modes/interactive/components/claude-startup-compat.ts";
 import { ClaudeStartupComponent } from "../src/modes/interactive/components/claude-startup.ts";
+import { installClaudeStartupHeaderUpgrade } from "../src/modes/interactive/components/claude-startup-compat.ts";
 import { initTheme } from "../src/modes/interactive/theme/theme.ts";
 
 beforeAll(() => {
