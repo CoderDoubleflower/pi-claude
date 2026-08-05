@@ -77,6 +77,9 @@ function createSession(options: {
 			getSessionName: () => options.sessionName,
 			getCwd: () => "/tmp/project",
 		},
+		settingsManager: {
+			getStatusLine: () => undefined,
+		},
 		getContextUsage: () => ({ contextWindow: 200_000, percent: 12.3 }),
 		modelRuntime: {
 			isUsingOAuth: () => false,
