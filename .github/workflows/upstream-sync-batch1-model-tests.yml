@@ -1,0 +1,25 @@
+name: Validate upstream batch 1 model tests
+
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: sync/upstream-batch1-20260805
+          fetch-depth: 0
+          persist-credentials: true
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
+          sudo ln -sf "$(which fdfind)" /usr/local/bin/fd
+      - run: bash .github/scripts/upstream-batch1-model-tests.sh
