@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -10,6 +10,9 @@ if (!process.argv[2]) {
 	throw new Error("Usage: verify-pi-claude-release-runtime.mjs <installed-package-root>");
 }
 
+const diagnosticPath = resolve(
+	process.env.PI_RUNTIME_DIFF_PATH ?? join(repoRoot, ".artifacts", "release-runtime-diff.json"),
+);
 const mappings = [
 	["packages/coding-agent/dist", "dist"],
 	["packages/ai/dist", "node_modules/@earendil-works/pi-ai/dist"],
@@ -71,19 +74,35 @@ for (const [sourceRelative, installedRelative] of mappings) {
 				(installedMetadata.hash !== metadata.hash || installedMetadata.size !== metadata.size)
 			);
 		})
-		.map(([path, sourceMetadata]) => {
-			const installedMetadata = installedFiles.get(path);
-			return `${path} (source ${sourceMetadata.size}/${sourceMetadata.hash}, installed ${installedMetadata.size}/${installedMetadata.hash})`;
-		});
+		.map(([path, sourceMetadata]) => ({
+			path,
+			source: sourceMetadata,
+			installed: installedFiles.get(path),
+		}));
 
 	if (sourceOnly.length || installedOnly.length || changed.length) {
+		const diagnostic = {
+			sourceRelative,
+			installedRelative,
+			sourceOnly,
+			installedOnly,
+			changed,
+		};
+		await mkdir(dirname(diagnosticPath), { recursive: true });
+		await writeFile(diagnosticPath, `${JSON.stringify(diagnostic, null, 2)}\n`);
+
+		const changedSummary = changed.map(
+			({ path, source: sourceMetadata, installed: installedMetadata }) =>
+				`${path} (source ${sourceMetadata.size}/${sourceMetadata.hash}, installed ${installedMetadata.size}/${installedMetadata.hash})`,
+		);
 		const details = [
 			sourceOnly.length ? `source-only: ${summarize(sourceOnly)}` : "",
 			installedOnly.length ? `installed-only: ${summarize(installedOnly)}` : "",
-			changed.length ? `byte-mismatched: ${summarize(changed)}` : "",
+			changed.length ? `byte-mismatched: ${summarize(changedSummary)}` : "",
 		]
 			.filter(Boolean)
 			.join("\n");
+		console.error(`::error title=Release runtime mismatch::${details.replaceAll("\n", "%0A")}`);
 		throw new Error(`Release runtime mismatch for ${sourceRelative}\n${details}`);
 	}
 
