@@ -79,7 +79,7 @@ try {
 
 	const stageManifestPath = join(stagePackage, "package.json");
 	const stageManifest = JSON.parse(await readFile(stageManifestPath, "utf8"));
-	stageManifest.bundledDependencies = runtimePackages.map(({ name }) => name);
+	const localRuntimePackages = new Map();
 
 	for (const runtimePackage of runtimePackages) {
 		const tarball = await packWorkspace(runtimePackage.name, packDir);
@@ -92,13 +92,40 @@ try {
 		const localManifest = JSON.parse(await readFile(join(extractedPackage, "package.json"), "utf8"));
 		stageManifest.dependencies ??= {};
 		stageManifest.dependencies[runtimePackage.name] = localManifest.version;
-
-		const [scope, name] = runtimePackage.name.split("/");
-		const installParent = join(stagePackage, "node_modules", scope);
-		await mkdir(installParent, { recursive: true });
-		await cp(extractedPackage, join(installParent, name), { recursive: true, force: true });
+		localRuntimePackages.set(runtimePackage.name, extractedPackage);
 	}
 
+	const bundledDependencies = [
+		...new Set([
+			...Object.keys(stageManifest.dependencies ?? {}),
+			...Object.keys(stageManifest.optionalDependencies ?? {}),
+		]),
+	].sort();
+	stageManifest.bundledDependencies = bundledDependencies;
+	await writeFile(stageManifestPath, `${JSON.stringify(stageManifest, null, 2)}\n`);
+
+	// Materialize the production tree from the package shrinkwrap before packing.
+	// The final tarball bundles this whole tree, so installation cannot substitute
+	// registry packages for the versions and dependency layout that were tested here.
+	run(
+		npmCommand,
+		["install", "--ignore-scripts", "--omit=dev", "--no-audit", "--no-fund"],
+		{ cwd: stagePackage },
+	);
+
+	// npm install populated registry copies of the first-party packages. Replace
+	// them with the exact packages and dist trees produced by this source build.
+	for (const runtimePackage of runtimePackages) {
+		const extractedPackage = localRuntimePackages.get(runtimePackage.name);
+		if (!extractedPackage) throw new Error(`Missing staged runtime package ${runtimePackage.name}`);
+		const [scope, name] = runtimePackage.name.split("/");
+		const installedPackage = join(stagePackage, "node_modules", scope, name);
+		await rm(installedPackage, { recursive: true, force: true });
+		await mkdir(dirname(installedPackage), { recursive: true });
+		await cp(extractedPackage, installedPackage, { recursive: true, force: true });
+	}
+
+	// npm install may normalize package.json; restore the definitive release manifest.
 	await writeFile(stageManifestPath, `${JSON.stringify(stageManifest, null, 2)}\n`);
 	const finalOutput = run(
 		npmCommand,
