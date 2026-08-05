@@ -198,12 +198,19 @@ export default function remoteCompactionExtension(pi: ExtensionAPI): void {
 		const text = sameRequestModel ? observedShape?.text : undefined;
 		const tools = buildToolsPayload(pi.getAllTools(), pi.getActiveTools());
 
+		const requestHeaders = auth.headers
+			? (Object.fromEntries(Object.entries(auth.headers).filter(([, value]) => value !== null)) as Record<
+					string,
+					string
+				>)
+			: undefined;
+
 		const [localResult, remoteResult] = await Promise.allSettled([
 			compact(
 				event.preparation,
 				compactionModel,
 				auth.apiKey,
-				auth.headers,
+				requestHeaders,
 				event.customInstructions,
 				event.signal,
 				thinkingLevel,
@@ -213,7 +220,7 @@ export default function remoteCompactionExtension(pi: ExtensionAPI): void {
 			callRemoteCompactionEndpoint({
 				model: compactionModel,
 				apiKey: auth.apiKey,
-				headers: auth.headers,
+				headers: requestHeaders,
 				sessionId,
 				input,
 				instructions: ctx.getSystemPrompt(),

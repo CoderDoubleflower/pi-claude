@@ -51,6 +51,7 @@ import { stripFrontmatter } from "../utils/frontmatter.ts";
 import { estimateLlmContextTokens } from "../utils/llm-context-estimate.ts";
 import { resolvePath } from "../utils/paths.ts";
 import { sleep } from "../utils/sleep.ts";
+import { normalizeToolResultImages } from "../utils/tool-result-images.ts";
 import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth-guidance.ts";
 import { type BashResult, executeBashWithOperations } from "./bash-executor.ts";
 import {
@@ -495,30 +496,34 @@ export class AgentSession {
 
 		this.agent.afterToolCall = async ({ toolCall, args, result, isError }) => {
 			const runner = this._extensionRunner;
-			if (!runner.hasHandlers("tool_result")) {
-				return undefined;
-			}
+			const hookResult = runner.hasHandlers("tool_result")
+				? await runner.emitToolResult({
+						type: "tool_result",
+						toolName: toolCall.name,
+						toolCallId: toolCall.id,
+						input: args as Record<string, unknown>,
+						content: result.content,
+						details: result.details,
+						isError,
+						usage: result.usage,
+					})
+				: undefined;
 
-			const hookResult = await runner.emitToolResult({
-				type: "tool_result",
-				toolName: toolCall.name,
-				toolCallId: toolCall.id,
-				input: args as Record<string, unknown>,
-				content: result.content,
-				details: result.details,
-				isError,
-				usage: result.usage,
+			const content = hookResult?.content ?? result.content ?? [];
+			// Runs after the extension hook so images injected or replaced by extensions are normalized too.
+			const normalizedContent = await normalizeToolResultImages(content, {
+				autoResizeImages: this.settingsManager.getImageAutoResize(),
 			});
 
-			if (!hookResult) {
+			if (!hookResult && normalizedContent === content) {
 				return undefined;
 			}
 
 			return {
-				content: hookResult.content,
-				details: hookResult.details,
-				isError: hookResult.isError ?? isError,
-				usage: hookResult.usage,
+				content: normalizedContent,
+				details: hookResult?.details,
+				isError: hookResult?.isError ?? isError,
+				usage: hookResult?.usage,
 			};
 		};
 	}
@@ -1172,6 +1177,12 @@ export class AgentSession {
 					preflightResult?.(true);
 					return;
 				}
+			}
+
+			if (this._compactionAbortController !== undefined) {
+				throw new Error(
+					"Cannot submit a prompt while compaction is in progress. Wait for compaction to finish and retry.",
+				);
 			}
 
 			// Emit input event for extension interception (before skill/template expansion)
