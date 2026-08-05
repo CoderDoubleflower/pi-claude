@@ -1,0 +1,1 @@
+Resolve the JSON/RPC protocol changelog overlap.
