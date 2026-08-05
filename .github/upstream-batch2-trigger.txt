@@ -1,1 +1,1 @@
-Validate reviewed upstream batch 2 integration.
+Diagnose isolated upstream batch 2 validation.
