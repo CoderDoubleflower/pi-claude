@@ -82,6 +82,31 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Package generated model data and system tools
+        if: github.head_ref == 'verify/local-container-20260805'
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf /tmp/pi-claude-generated-model-data.tar.gz \
+            packages/ai/src/models.generated.ts \
+            packages/ai/src/providers/data
+          mkdir -p /tmp/pi-local-tools
+          cp "$(command -v fdfind)" /tmp/pi-local-tools/fd
+          cp "$(command -v rg)" /tmp/pi-local-tools/rg
+          chmod +x /tmp/pi-local-tools/fd /tmp/pi-local-tools/rg
+          tar -C /tmp/pi-local-tools -czf /tmp/pi-local-tools.tar.gz .
+
+      - name: Upload generated model data and system tools
+        if: github.head_ref == 'verify/local-container-20260805'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-claude-generated-data-tools
+          path: |
+            /tmp/pi-claude-generated-model-data.tar.gz
+            /tmp/pi-local-tools.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Check
         run: npm run check
 
