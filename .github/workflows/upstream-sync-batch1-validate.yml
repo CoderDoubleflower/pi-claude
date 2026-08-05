@@ -1,0 +1,105 @@
+name: Reconcile and validate upstream batch 1
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: upstream-sync-batch1-validation
+  cancel-in-progress: false
+
+jobs:
+  reconcile-and-test:
+    if: github.event.pull_request.head.ref == 'sync/upstream-batch1-20260805'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: sync/upstream-batch1-20260805
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Reconcile Agent hook overlap
+        shell: bash
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          from pathlib import Path
+
+          path = Path("packages/agent/src/agent.ts")
+          text = path.read_text()
+
+          replacements = [
+              (
+                  '\ttoolExecution?: ToolExecutionMode;\n\t/** Stop gracefully after a completed turn and before another provider request. */\n\tshouldStopAfterTurn?: (context: ShouldStopAfterTurnContext) => boolean | Promise<boolean>;\n}',
+                  '\ttoolExecution?: ToolExecutionMode;\n}',
+              ),
+              (
+                  '\t/** Hook to stop the agent loop after the current turn completes. */\n\tpublic shouldStopAfterTurn?: (context: ShouldStopAfterTurnContext) => boolean | Promise<boolean>;\n\n\tconstructor(options: AgentOptions) {',
+                  '\tconstructor(options: AgentOptions) {',
+              ),
+              (
+                  '\t\tthis.toolExecution = runtimeOptions.toolExecution ?? "parallel";\n\t\tthis.shouldStopAfterTurn = runtimeOptions.shouldStopAfterTurn;\n\t}',
+                  '\t\tthis.toolExecution = runtimeOptions.toolExecution ?? "parallel";\n\t}',
+              ),
+              (
+                  '\t\t\tshouldStopAfterTurn: this.shouldStopAfterTurn,\n\t\t\tbeforeToolCall: this.beforeToolCall,',
+                  '\t\t\tbeforeToolCall: this.beforeToolCall,',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"Expected exactly one overlap block, found {count}: {old[:80]!r}")
+              text = text.replace(old, new)
+
+          path.write_text(text)
+          PY
+
+          if grep -n "shouldStopAfterTurn: this.shouldStopAfterTurn" packages/agent/src/agent.ts; then
+            echo "Legacy direct hook forwarding remains"
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build workspace
+        run: npm run build
+
+      - name: Run focused regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx vitest --run \
+            packages/agent/test/agent.test.ts \
+            packages/ai/test/google-shared-gemini3-unsigned-tool-call.test.ts \
+            packages/ai/test/google-shared-retry.test.ts \
+            packages/ai/test/sampling-options.test.ts \
+            packages/ai/test/validation.test.ts \
+            packages/coding-agent/test/model-resolver.test.ts \
+            packages/coding-agent/test/package-manager.test.ts \
+            packages/coding-agent/test/suite/agent-session-tool-result-images.test.ts \
+            packages/coding-agent/test/suite/regressions/6104-find-root-relativization.test.ts \
+            packages/coding-agent/test/suite/regressions/7150-rpc-prompt-during-compaction.test.ts \
+            packages/coding-agent/test/suite/regressions/7497-session-discovery-symlink.test.ts \
+            packages/tui/test/terminal-colors.test.ts \
+            packages/tui/test/terminal.test.ts
+
+      - name: Commit validated reconciliation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm -f .github/workflows/upstream-sync-batch1-validate.yml
+          git add -A
+          git commit -m "fix(agent): reconcile upstream shouldStopAfterTurn API"
+          git push origin HEAD:sync/upstream-batch1-20260805
