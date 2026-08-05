@@ -17,6 +17,7 @@ const runtimePackages = [
 	{ name: "@earendil-works/pi-agent-core", workspaceDir: "packages/agent" },
 	{ name: "@earendil-works/pi-tui", workspaceDir: "packages/tui" },
 ];
+const runtimePackageNames = new Set(runtimePackages.map(({ name }) => name));
 
 function run(command, commandArgs, options = {}) {
 	const result = spawnSync(command, commandArgs, {
@@ -65,6 +66,24 @@ async function replaceDist(sourcePackageDir, stagedPackageDir) {
 	await cp(sourceDist, stagedDist, { recursive: true, force: true });
 }
 
+function mergeDependencyMap(target, incoming, owner) {
+	if (!incoming) return;
+	for (const [name, spec] of Object.entries(incoming)) {
+		if (runtimePackageNames.has(name)) continue;
+		const existing = target[name];
+		if (existing !== undefined && existing !== spec) {
+			throw new Error(
+				`Dependency version conflict for ${name}: pi-claude uses ${existing}, ${owner} uses ${spec}`,
+			);
+		}
+		target[name] = spec;
+	}
+}
+
+function lockPathForPackage(packageName) {
+	return `node_modules/${packageName}`;
+}
+
 const tempRoot = await mkdtemp(join(tmpdir(), "pi-claude-release."));
 try {
 	const packDir = join(tempRoot, "packs");
@@ -78,21 +97,14 @@ try {
 	await replaceDist("packages/coding-agent", stagePackage);
 
 	const stageManifestPath = join(stagePackage, "package.json");
+	const stageShrinkwrapPath = join(stagePackage, "npm-shrinkwrap.json");
 	const stageManifest = JSON.parse(await readFile(stageManifestPath, "utf8"));
+	const stageShrinkwrap = JSON.parse(await readFile(stageShrinkwrapPath, "utf8"));
+	stageManifest.dependencies ??= {};
+	stageManifest.optionalDependencies ??= {};
 	delete stageManifest.bundledDependencies;
 	delete stageManifest.bundleDependencies;
-	await writeFile(stageManifestPath, `${JSON.stringify(stageManifest, null, 2)}\n`);
 
-	// Restore the exact production graph represented by npm-shrinkwrap.json while
-	// package.json still matches that lock. Declaring bundled dependencies before
-	// this step triggers an npm Arborist edgesOut crash on npm 10.
-	run(
-		npmCommand,
-		["ci", "--ignore-scripts", "--omit=dev", "--no-audit", "--no-fund"],
-		{ cwd: stagePackage },
-	);
-
-	const localRuntimePackages = new Map();
 	for (const runtimePackage of runtimePackages) {
 		const tarball = await packWorkspace(runtimePackage.name, packDir);
 		const extractedPackage = await extractTarball(
@@ -100,30 +112,44 @@ try {
 			join(extractedDir, runtimePackage.name.replaceAll("/", "__")),
 		);
 		await replaceDist(runtimePackage.workspaceDir, extractedPackage);
-		localRuntimePackages.set(runtimePackage.name, extractedPackage);
-	}
 
-	// Replace registry copies with packages and dist trees from this source build.
-	for (const runtimePackage of runtimePackages) {
-		const extractedPackage = localRuntimePackages.get(runtimePackage.name);
-		if (!extractedPackage) throw new Error(`Missing staged runtime package ${runtimePackage.name}`);
+		const localManifest = JSON.parse(await readFile(join(extractedPackage, "package.json"), "utf8"));
+		stageManifest.dependencies[runtimePackage.name] = localManifest.version;
+		mergeDependencyMap(stageManifest.dependencies, localManifest.dependencies, runtimePackage.name);
+		mergeDependencyMap(
+			stageManifest.optionalDependencies,
+			localManifest.optionalDependencies,
+			runtimePackage.name,
+		);
+
 		const [scope, name] = runtimePackage.name.split("/");
-		const installedPackage = join(stagePackage, "node_modules", scope, name);
-		await rm(installedPackage, { recursive: true, force: true });
-		await mkdir(dirname(installedPackage), { recursive: true });
-		await cp(extractedPackage, installedPackage, { recursive: true, force: true });
+		const installParent = join(stagePackage, "node_modules", scope);
+		await mkdir(installParent, { recursive: true });
+		await cp(extractedPackage, join(installParent, name), { recursive: true, force: true });
 	}
 
-	// npm pack recursively includes the transitive graph for these top-level
-	// dependencies. Writing this only after npm ci prevents npm from trying to
-	// resolve a partially materialized bundled tree.
-	stageManifest.bundledDependencies = [
-		...new Set([
-			...Object.keys(stageManifest.dependencies ?? {}),
-			...Object.keys(stageManifest.optionalDependencies ?? {}),
-		]),
-	].sort();
+	// Bundled workspace packages are treated by npm as complete dependency trees.
+	// Hoist their direct third-party runtime dependencies to pi-claude so npm
+	// installs those dependencies normally for the target platform.
+	stageManifest.bundledDependencies = [...runtimePackageNames].sort();
+
+	const lockRoot = stageShrinkwrap.packages?.[""];
+	if (!lockRoot) throw new Error("npm-shrinkwrap.json is missing its root package entry");
+	lockRoot.dependencies = { ...stageManifest.dependencies };
+	lockRoot.optionalDependencies = { ...stageManifest.optionalDependencies };
+
+	for (const dependencyName of [
+		...Object.keys(stageManifest.dependencies),
+		...Object.keys(stageManifest.optionalDependencies),
+	]) {
+		if (runtimePackageNames.has(dependencyName)) continue;
+		if (!stageShrinkwrap.packages[lockPathForPackage(dependencyName)]) {
+			throw new Error(`npm-shrinkwrap.json is missing ${dependencyName}`);
+		}
+	}
+
 	await writeFile(stageManifestPath, `${JSON.stringify(stageManifest, null, 2)}\n`);
+	await writeFile(stageShrinkwrapPath, `${JSON.stringify(stageShrinkwrap, null, 2)}\n`);
 
 	const finalOutput = run(
 		npmCommand,
