@@ -68,8 +68,54 @@ jobs:
             packages/coding-agent/test/suite/regressions/7290-json-stream-linear.test.ts \
             packages/coding-agent/test/plan-mode.test.ts
 
-      - name: Run full test suite
-        run: ./test.sh
+      - name: Restore a clean workspace for isolated full suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          git reset --hard HEAD
+          git clean -fd
+          npm run build
+          npm run check
+
+      - name: Run isolated full test suite
+        shell: bash
+        run: |
+          set +e
+          ./test.sh > /tmp/batch2-full-test.log 2>&1
+          status=$?
+          set -e
+
+          if [ "$status" -ne 0 ]; then
+            python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          path = Path('/tmp/batch2-full-test.log')
+          text = path.read_text(errors='replace')
+          text = re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', text)
+          lines = text.splitlines()
+          markers = (
+              'Failed Tests',
+              ' FAIL ',
+              'AssertionError',
+              'TypeError',
+              'ReferenceError',
+              'Expected:',
+              'Received:',
+              'Process completed with exit code',
+              'npm error Lifecycle script',
+          )
+          indexes = [i for i, line in enumerate(lines) if any(marker in line for marker in markers)]
+          selected = set()
+          for index in indexes:
+              selected.update(range(max(0, index - 8), min(len(lines), index + 18)))
+          selected.update(range(max(0, len(lines) - 120), len(lines)))
+          for index in sorted(selected):
+              print(f'{index + 1}: {lines[index]}')
+          PY
+          fi
+
+          exit "$status"
 
       - name: Commit validated cleanup
         shell: bash
