@@ -84,6 +84,15 @@ function lockPathForPackage(packageName) {
 	return `node_modules/${packageName}`;
 }
 
+function clearDependencyEdges(manifest) {
+	manifest.dependencies = {};
+	delete manifest.optionalDependencies;
+	delete manifest.peerDependencies;
+	delete manifest.peerDependenciesMeta;
+	delete manifest.bundledDependencies;
+	delete manifest.bundleDependencies;
+}
+
 const tempRoot = await mkdtemp(join(tmpdir(), "pi-claude-release."));
 try {
 	const packDir = join(tempRoot, "packs");
@@ -127,13 +136,14 @@ try {
 		// of that bundle. Their real declarations are hoisted to pi-claude above;
 		// clear them only in this staged copy so npm installs them normally instead
 		// of considering an absent nested dependency tree already bundled.
-		localManifest.dependencies = {};
-		delete localManifest.optionalDependencies;
-		delete localManifest.peerDependencies;
-		delete localManifest.peerDependenciesMeta;
-		delete localManifest.bundledDependencies;
-		delete localManifest.bundleDependencies;
+		clearDependencyEdges(localManifest);
 		await writeFile(localManifestPath, `${JSON.stringify(localManifest, null, 2)}\n`);
+
+		const lockEntry = stageShrinkwrap.packages?.[lockPathForPackage(runtimePackage.name)];
+		if (!lockEntry) {
+			throw new Error(`npm-shrinkwrap.json is missing ${runtimePackage.name}`);
+		}
+		clearDependencyEdges(lockEntry);
 
 		const [scope, name] = runtimePackage.name.split("/");
 		const installParent = join(stagePackage, "node_modules", scope);
