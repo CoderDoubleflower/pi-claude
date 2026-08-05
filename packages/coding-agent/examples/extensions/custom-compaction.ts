@@ -13,9 +13,9 @@
  *   pi --extension examples/extensions/custom-compaction.ts
  */
 
+import { uuidv7 } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@doubleflower/pi-claude";
 import { convertToLlm, serializeConversation } from "@doubleflower/pi-claude";
-import { uuidv7 } from "@earendil-works/pi-ai";
 
 export default function (pi: ExtensionAPI) {
 	pi.on("session_before_compact", async (event, ctx) => {

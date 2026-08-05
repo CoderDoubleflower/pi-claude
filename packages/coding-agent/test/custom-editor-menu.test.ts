@@ -1,5 +1,10 @@
 import { stripVTControlCharacters } from "node:util";
-import { type AutocompleteProvider, Editor, type EditorTheme, type TUI } from "@earendil-works/pi-tui";
+import {
+	type AutocompleteProvider,
+	Editor,
+	type EditorTheme,
+	type TUI,
+} from "@earendil-works/pi-tui";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { KeybindingsManager } from "../src/core/keybindings.ts";
 import { CustomEditor } from "../src/modes/interactive/components/custom-editor.ts";

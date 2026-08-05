@@ -19,20 +19,24 @@ describe("clear-context plan session handoff", () => {
 		);
 
 		expect(options).not.toHaveProperty("parentSession");
-		await options.setup?.({
-			getSessionName: () => undefined,
-			appendSessionInfo: (name: string) => calls.push(`title:${name}`),
-		} as never);
+		await options.setup?.(
+			{
+				getSessionName: () => undefined,
+				appendSessionInfo: (name: string) => calls.push(`title:${name}`),
+			} as never,
+		);
 		expect(calls).toEqual(["original-setup", "title:Implement clean session handoff"]);
 	});
 
 	it("does not replace a title assigned by an earlier setup hook", async () => {
 		const appendSessionInfo = vi.fn();
 		const options = buildIndependentExecutionSessionOptions(undefined, "Generated title");
-		await options.setup?.({
-			getSessionName: () => "Existing title",
-			appendSessionInfo,
-		} as never);
+		await options.setup?.(
+			{
+				getSessionName: () => "Existing title",
+				appendSessionInfo,
+			} as never,
+		);
 		expect(appendSessionInfo).not.toHaveBeenCalled();
 	});
 

@@ -131,7 +131,10 @@ export class ClaudeStartupComponent implements Component {
 
 		const clawdRows = CLAWD_ROWS.map((row) => colorClawd(row.padEnd(CLAWD_WIDTH)));
 		if (!useHorizontalLayout) {
-			return [...clawdRows.map((row) => truncateToWidth(row, width, "")), ...infoRows];
+			return [
+				...clawdRows.map((row) => truncateToWidth(row, width, "")),
+				...infoRows,
+			];
 		}
 
 		const gap = " ".repeat(INFO_GAP);
