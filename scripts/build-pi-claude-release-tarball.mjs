@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -85,7 +85,7 @@ try {
 		const [scope, name] = packageName.split("/");
 		const installParent = join(stagePackage, "node_modules", scope);
 		await mkdir(installParent, { recursive: true });
-		run("cp", ["-a", extractedPackage, join(installParent, name)]);
+		await cp(extractedPackage, join(installParent, name), { recursive: true, force: true });
 	}
 
 	await writeFile(stageManifestPath, `${JSON.stringify(stageManifest, null, 2)}\n`);
