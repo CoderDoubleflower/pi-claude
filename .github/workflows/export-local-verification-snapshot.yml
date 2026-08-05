@@ -1,0 +1,32 @@
+name: Export local verification snapshot
+
+on:
+  push:
+    branches:
+      - verify/local-container-20260805
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 23e5781984080c96982b3baae412db86da0098d1
+          fetch-depth: 1
+
+      - name: Create source snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar --exclude=.git -czf /tmp/pi-claude-source-23e5781.tar.gz .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pi-claude-source-23e5781
+          path: /tmp/pi-claude-source-23e5781.tar.gz
+          retention-days: 1
+          if-no-files-found: error
