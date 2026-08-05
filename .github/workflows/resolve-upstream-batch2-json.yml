@@ -61,8 +61,8 @@ jobs:
               "- `ModelRegistry.getApiKeyAndHeaders()` now preserves `null` provider-header deletion markers; callers forwarding headers to pi-ai may pass them through, while concrete HTTP consumers must filter deleted entries.\n"
           )
           if "emit only `assistantMessageEvent` deltas" not in text:
-              if text.count(anchor) != 1:
-                  raise SystemExit("Unexpected Changed section layout")
+              if anchor not in text:
+                  raise SystemExit("Unreleased Changed section not found")
               text = text.replace(anchor, anchor + additions, 1)
           path.write_text(text)
           PY
