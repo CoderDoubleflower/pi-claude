@@ -1,4 +1,4 @@
-name: Dispatch current pi-claude publish once
+name: Dispatch and capture current pi-claude publish
 
 on:
   push:
@@ -6,23 +6,86 @@ on:
 
 permissions:
   actions: write
-  contents: read
+  contents: write
 
 jobs:
-  dispatch:
-    if: github.event.head_commit.message == 'chore: dispatch pi-claude v0.83.13 publish'
+  dispatch-and-capture:
+    if: github.event.head_commit.message == 'chore: capture pi-claude v0.83.13 publish result'
     runs-on: ubuntu-latest
     steps:
-      - name: Dispatch publish-npm.yml
+      - name: Dispatch, wait, and commit report
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
+          CREATED_AFTER: '2026-08-05T13:23:00Z'
         run: |
           set -euo pipefail
-          curl --fail-with-body --silent --show-error \
-            --request POST \
-            --url "https://api.github.com/repos/${REPOSITORY}/actions/workflows/publish-npm.yml/dispatches" \
-            --header "Accept: application/vnd.github+json" \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
-            --header "X-GitHub-Api-Version: 2022-11-28" \
-            --data '{"ref":"main","inputs":{"retry_current":"true","bump":"patch","version":""}}'
+
+          find_latest_run() {
+            gh api "/repos/${REPOSITORY}/actions/workflows/publish-npm.yml/runs?event=workflow_dispatch&branch=main&per_page=20" \
+              --jq ".workflow_runs | map(select(.created_at > \"${CREATED_AFTER}\")) | sort_by(.created_at) | last | .id // empty"
+          }
+
+          run_id="$(find_latest_run)"
+          if [[ -z "$run_id" ]]; then
+            gh api --method POST "/repos/${REPOSITORY}/actions/workflows/publish-npm.yml/dispatches" \
+              --raw-field ref=main \
+              --field 'inputs[retry_current]=true' \
+              --field 'inputs[bump]=patch' \
+              --field 'inputs[version]='
+
+            for _ in $(seq 1 60); do
+              sleep 5
+              run_id="$(find_latest_run)"
+              [[ -n "$run_id" ]] && break
+            done
+          fi
+
+          if [[ -z "$run_id" ]]; then
+            echo 'Could not find or create the publish workflow run.' >&2
+            exit 1
+          fi
+
+          for _ in $(seq 1 360); do
+            status="$(gh api "/repos/${REPOSITORY}/actions/runs/${run_id}" --jq '.status')"
+            [[ "$status" == 'completed' ]] && break
+            sleep 5
+          done
+
+          run_json="$(gh api "/repos/${REPOSITORY}/actions/runs/${run_id}")"
+          jobs_json="$(gh api "/repos/${REPOSITORY}/actions/runs/${run_id}/jobs?per_page=100")"
+          conclusion="$(jq -r '.conclusion // .status' <<<"$run_json")"
+
+          failed_log=''
+          if [[ "$conclusion" != 'success' ]]; then
+            set +e
+            failed_log="$(gh run view "$run_id" --repo "$REPOSITORY" --log-failed 2>&1)"
+            set -e
+            failed_log="$(printf '%s' "$failed_log" | tail -c 50000)"
+          fi
+
+          report="$(
+            jq -n \
+              --arg generated_at "$(date -u +%FT%TZ)" \
+              --arg failed_log "$failed_log" \
+              --argjson run "$run_json" \
+              --argjson jobs "$jobs_json" \
+              '{generated_at: $generated_at, run: {id: $run.id, html_url: $run.html_url, status: $run.status, conclusion: $run.conclusion, event: $run.event, head_branch: $run.head_branch, head_sha: $run.head_sha, created_at: $run.created_at, updated_at: $run.updated_at}, jobs: [$jobs.jobs[] | {id, name, status, conclusion, html_url, steps: [.steps[] | {name, status, conclusion, number}]}], failed_log: $failed_log}'
+          )"
+
+          encoded="$(printf '%s\n' "$report" | base64 -w0)"
+          report_path='.github/publish-run-report.json'
+          existing_sha="$(gh api "/repos/${REPOSITORY}/contents/${report_path}?ref=main" --jq '.sha' 2>/dev/null || true)"
+
+          if [[ -n "$existing_sha" ]]; then
+            gh api --method PUT "/repos/${REPOSITORY}/contents/${report_path}" \
+              --raw-field message='chore: record pi-claude v0.83.13 publish result' \
+              --raw-field content="$encoded" \
+              --raw-field branch=main \
+              --raw-field sha="$existing_sha"
+          else
+            gh api --method PUT "/repos/${REPOSITORY}/contents/${report_path}" \
+              --raw-field message='chore: record pi-claude v0.83.13 publish result' \
+              --raw-field content="$encoded" \
+              --raw-field branch=main
+          fi
