@@ -199,9 +199,10 @@ export default function remoteCompactionExtension(pi: ExtensionAPI): void {
 		const tools = buildToolsPayload(pi.getAllTools(), pi.getActiveTools());
 
 		const requestHeaders = auth.headers
-			? (Object.fromEntries(
-					Object.entries(auth.headers).filter(([, value]) => value !== null),
-				) as Record<string, string>)
+			? (Object.fromEntries(Object.entries(auth.headers).filter(([, value]) => value !== null)) as Record<
+					string,
+					string
+				>)
 			: undefined;
 
 		const [localResult, remoteResult] = await Promise.allSettled([
