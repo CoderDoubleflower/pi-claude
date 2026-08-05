@@ -25,15 +25,15 @@ jobs:
           fetch-depth: 0
           persist-credentials: true
 
-      - name: Reconcile Agent hook overlap
+      - name: Reconcile upstream overlaps
         shell: bash
         run: |
           set -euo pipefail
           python <<'PY'
           from pathlib import Path
 
-          path = Path("packages/agent/src/agent.ts")
-          text = path.read_text()
+          agent_path = Path("packages/agent/src/agent.ts")
+          text = agent_path.read_text()
 
           replacements = [
               (
@@ -57,10 +57,35 @@ jobs:
           for old, new in replacements:
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f"Expected exactly one overlap block, found {count}: {old[:80]!r}")
+                  raise SystemExit(f"Expected exactly one Agent overlap block, found {count}: {old[:80]!r}")
               text = text.replace(old, new)
 
-          path.write_text(text)
+          agent_path.write_text(text)
+
+          compaction_path = Path("packages/coding-agent/src/core/remote-compaction/extension.ts")
+          text = compaction_path.read_text()
+          insertion_point = '\t\tconst [localResult, remoteResult] = await Promise.allSettled(['
+          headers_block = '''\t\tconst requestHeaders = auth.headers
+\t\t\t? (Object.fromEntries(
+\t\t\t\t\tObject.entries(auth.headers).filter(([, value]) => value !== null),
+\t\t\t\t) as Record<string, string>)
+\t\t\t: undefined;
+
+'''
+          if text.count(insertion_point) != 1:
+              raise SystemExit("Remote compaction insertion point changed")
+          text = text.replace(insertion_point, headers_block + insertion_point)
+
+          compact_headers = '\t\t\t\tauth.apiKey,\n\t\t\t\tauth.headers,\n'
+          if text.count(compact_headers) != 1:
+              raise SystemExit("Native compaction header call changed")
+          text = text.replace(compact_headers, '\t\t\t\tauth.apiKey,\n\t\t\t\trequestHeaders,\n')
+
+          remote_headers = '\t\t\t\theaders: auth.headers,\n'
+          if text.count(remote_headers) != 1:
+              raise SystemExit("Remote compaction header call changed")
+          text = text.replace(remote_headers, '\t\t\t\theaders: requestHeaders,\n')
+          compaction_path.write_text(text)
           PY
 
           if grep -n "shouldStopAfterTurn: this.shouldStopAfterTurn" packages/agent/src/agent.ts; then
@@ -99,7 +124,8 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -- packages/ai/src/models.generated.ts packages/ai/src/providers/data || true
           rm -f .github/workflows/upstream-sync-batch1-validate.yml
           git add -A
-          git commit -m "fix(agent): reconcile upstream shouldStopAfterTurn API"
+          git commit -m "fix: reconcile upstream provider and agent APIs"
           git push origin HEAD:sync/upstream-batch1-20260805
