@@ -1,0 +1,110 @@
+name: Validate upstream batch 2
+
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize, ready_for_review]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: validate-upstream-batch2
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    if: github.event.pull_request.head.ref == 'sync/upstream-batch2-20260805'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: sync/upstream-batch2-20260805
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Remove temporary branch trigger
+        run: git rm -f --ignore-unmatch .github/upstream-batch2-trigger.txt
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Verify fork invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'process.env.AI_AGENT = "pi-claude"' packages/coding-agent/src/cli.ts
+          grep -q 'process.env.AI_AGENT = "pi-claude"' packages/coding-agent/src/rpc-entry.ts
+          if grep -R 'process.env.AI_AGENT = "pi"' packages/coding-agent/src; then
+            echo "Upstream AI_AGENT branding leaked into pi-claude"
+            exit 1
+          fi
+          test ! -e .github/upstream-batch2-conflict.txt
+          test ! -e .github/upstream-batch2-resolve-trigger.txt
+
+      - name: Build workspace
+        run: npm run build
+
+      - name: Run repository checks
+        run: npm run check
+
+      - name: Run focused regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx vitest --run \
+            packages/ai/test/openai-responses-terminal-event.test.ts \
+            packages/ai/test/overflow.test.ts \
+            packages/coding-agent/test/assistant-message.test.ts \
+            packages/coding-agent/test/args.test.ts \
+            packages/coding-agent/test/experimental-cli-command.test.ts \
+            packages/coding-agent/test/experimental-cli-resolution.test.ts \
+            packages/coding-agent/test/print-mode.test.ts \
+            packages/coding-agent/test/rpc-prompt-response-semantics.test.ts \
+            packages/coding-agent/test/suite/agent-session-compaction.test.ts \
+            packages/coding-agent/test/suite/regressions/7150-rpc-prompt-during-compaction.test.ts \
+            packages/coding-agent/test/suite/regressions/7253-manual-compact-during-response.test.ts \
+            packages/coding-agent/test/suite/regressions/7290-json-stream-linear.test.ts \
+            packages/coding-agent/test/plan-mode.test.ts
+
+      - name: Run full test suite
+        run: ./test.sh
+
+      - name: Commit validated cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Live model catalog generation is outside this reviewed batch.
+          git checkout HEAD -- packages/ai/src/models.generated.ts packages/ai/src/providers/data 2>/dev/null || true
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No cleanup changes required."
+          else
+            git commit -m "chore: finalize reviewed upstream changes batch 2"
+            git push origin HEAD:sync/upstream-batch2-20260805
+          fi
+
+      - name: Remove temporary default-branch workflows
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: CoderDoubleflower/pi-claude
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in \
+            .github/workflows/integrate-upstream-batch2.yml \
+            .github/workflows/validate-upstream-batch2.yml; do
+            file_sha=$(gh api "repos/${REPO}/contents/${path}?ref=main" --jq .sha 2>/dev/null || true)
+            if [ -n "$file_sha" ]; then
+              gh api --method DELETE "repos/${REPO}/contents/${path}" \
+                -f message='chore: remove temporary batch 2 workflows' \
+                -f branch=main \
+                -f sha="$file_sha" >/dev/null
+            fi
+          done
