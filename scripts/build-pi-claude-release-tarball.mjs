@@ -113,7 +113,8 @@ try {
 		);
 		await replaceDist(runtimePackage.workspaceDir, extractedPackage);
 
-		const localManifest = JSON.parse(await readFile(join(extractedPackage, "package.json"), "utf8"));
+		const localManifestPath = join(extractedPackage, "package.json");
+		const localManifest = JSON.parse(await readFile(localManifestPath, "utf8"));
 		stageManifest.dependencies[runtimePackage.name] = localManifest.version;
 		mergeDependencyMap(stageManifest.dependencies, localManifest.dependencies, runtimePackage.name);
 		mergeDependencyMap(
@@ -122,15 +123,27 @@ try {
 			runtimePackage.name,
 		);
 
+		// npm recursively treats dependencies declared by a bundled package as part
+		// of that bundle. Their real declarations are hoisted to pi-claude above;
+		// clear them only in this staged copy so npm installs them normally instead
+		// of considering an absent nested dependency tree already bundled.
+		localManifest.dependencies = {};
+		delete localManifest.optionalDependencies;
+		delete localManifest.peerDependencies;
+		delete localManifest.peerDependenciesMeta;
+		delete localManifest.bundledDependencies;
+		delete localManifest.bundleDependencies;
+		await writeFile(localManifestPath, `${JSON.stringify(localManifest, null, 2)}\n`);
+
 		const [scope, name] = runtimePackage.name.split("/");
 		const installParent = join(stagePackage, "node_modules", scope);
 		await mkdir(installParent, { recursive: true });
 		await cp(extractedPackage, join(installParent, name), { recursive: true, force: true });
 	}
 
-	// Bundled workspace packages are treated by npm as complete dependency trees.
-	// Hoist their direct third-party runtime dependencies to pi-claude so npm
-	// installs those dependencies normally for the target platform.
+	// Bundle only the source-built workspace packages. Their third-party runtime
+	// dependencies remain normal top-level dependencies and therefore retain npm's
+	// target-platform installation behavior.
 	stageManifest.bundledDependencies = [...runtimePackageNames].sort();
 
 	const lockRoot = stageShrinkwrap.packages?.[""];
