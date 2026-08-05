@@ -13,9 +13,9 @@ const outputDir = resolve(
 );
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const runtimePackages = [
-	"@earendil-works/pi-ai",
-	"@earendil-works/pi-agent-core",
-	"@earendil-works/pi-tui",
+	{ name: "@earendil-works/pi-ai", workspaceDir: "packages/ai" },
+	{ name: "@earendil-works/pi-agent-core", workspaceDir: "packages/agent" },
+	{ name: "@earendil-works/pi-tui", workspaceDir: "packages/tui" },
 ];
 
 function run(command, commandArgs, options = {}) {
@@ -58,6 +58,13 @@ async function extractTarball(tarball, destination) {
 	return join(destination, "package");
 }
 
+async function replaceDist(sourcePackageDir, stagedPackageDir) {
+	const sourceDist = join(repoRoot, sourcePackageDir, "dist");
+	const stagedDist = join(stagedPackageDir, "dist");
+	await rm(stagedDist, { recursive: true, force: true });
+	await cp(sourceDist, stagedDist, { recursive: true, force: true });
+}
+
 const tempRoot = await mkdtemp(join(tmpdir(), "pi-claude-release."));
 try {
 	const packDir = join(tempRoot, "packs");
@@ -68,21 +75,25 @@ try {
 
 	const cliTarball = await packWorkspace("@doubleflower/pi-claude", packDir);
 	const stagePackage = await extractTarball(cliTarball, join(extractedDir, "pi-claude"));
+	await replaceDist("packages/coding-agent", stagePackage);
+
 	const stageManifestPath = join(stagePackage, "package.json");
 	const stageManifest = JSON.parse(await readFile(stageManifestPath, "utf8"));
-	stageManifest.bundledDependencies = runtimePackages;
+	stageManifest.bundledDependencies = runtimePackages.map(({ name }) => name);
 
-	for (const packageName of runtimePackages) {
-		const tarball = await packWorkspace(packageName, packDir);
+	for (const runtimePackage of runtimePackages) {
+		const tarball = await packWorkspace(runtimePackage.name, packDir);
 		const extractedPackage = await extractTarball(
 			tarball,
-			join(extractedDir, packageName.replaceAll("/", "__")),
+			join(extractedDir, runtimePackage.name.replaceAll("/", "__")),
 		);
+		await replaceDist(runtimePackage.workspaceDir, extractedPackage);
+
 		const localManifest = JSON.parse(await readFile(join(extractedPackage, "package.json"), "utf8"));
 		stageManifest.dependencies ??= {};
-		stageManifest.dependencies[packageName] = localManifest.version;
+		stageManifest.dependencies[runtimePackage.name] = localManifest.version;
 
-		const [scope, name] = packageName.split("/");
+		const [scope, name] = runtimePackage.name.split("/");
 		const installParent = join(stagePackage, "node_modules", scope);
 		await mkdir(installParent, { recursive: true });
 		await cp(extractedPackage, join(installParent, name), { recursive: true, force: true });
