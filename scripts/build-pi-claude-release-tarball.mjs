@@ -64,6 +64,13 @@ async function replaceDist(sourcePackageDir, stagedPackageDir) {
 	await cp(sourceDist, stagedDist, { recursive: true, force: true });
 }
 
+async function injectShrinkwrap(finalTarball, shrinkwrapPath, destination) {
+	const extractedPackage = await extractTarball(finalTarball, destination);
+	await cp(shrinkwrapPath, join(extractedPackage, "npm-shrinkwrap.json"), { force: true });
+	await rm(finalTarball, { force: true });
+	run("tar", ["-czf", finalTarball, "-C", destination, "package"]);
+}
+
 function mergeDependencyMap(target, incoming, owner) {
 	if (!incoming) return;
 	for (const [name, spec] of Object.entries(incoming)) {
@@ -187,6 +194,13 @@ try {
 	);
 	const finalResult = parseNpmPackJson(finalOutput);
 	const finalTarball = join(outputDir, finalResult.filename);
+
+	// npm latest filters npm-shrinkwrap.json out of a directory passed to
+	// `npm pack`, even when it exists in the staged package. Preserve npm's
+	// selected file set and bundled dependency layout, then inject the exact
+	// validated lock into the already-built archive and repack the same tree.
+	await injectShrinkwrap(finalTarball, stageShrinkwrapPath, join(extractedDir, "final-release"));
+
 	const archiveEntries = run("tar", ["-tzf", finalTarball], { capture: true })
 		.split(/\r?\n/u)
 		.filter(Boolean);
