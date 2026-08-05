@@ -23,7 +23,7 @@ describe("issue #7253: manual compaction during an active response", () => {
 		}
 	});
 
-	it("runs only the requested manual compaction when the previous turn crossed the threshold", async () => {
+	it("runs only the requested manual compaction while a response is active", async () => {
 		let markSecondResponseStarted = () => {};
 		const secondResponseStarted = new Promise<void>((resolve) => {
 			markSecondResponseStarted = resolve;
@@ -35,7 +35,10 @@ describe("issue #7253: manual compaction during an active response", () => {
 
 		const harness = await createHarness({
 			models: [{ id: "faux-1", contextWindow: 1000, maxTokens: 100 }],
-			settings: { compaction: { enabled: true, reserveTokens: 999, keepRecentTokens: 2 } },
+			// pi-claude compacts at the safe boundary between tool turns. Keep this
+			// prompt below that threshold so the test reaches an active second response,
+			// then verifies that manual compaction remains the only compaction operation.
+			settings: { compaction: { enabled: true, reserveTokens: 100, keepRecentTokens: 2 } },
 			tools: [createNoopTool()],
 			extensionFactories: [
 				(pi) => {
