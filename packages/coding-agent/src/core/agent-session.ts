@@ -40,7 +40,6 @@ import {
 	cleanupSessionResources,
 	getSupportedThinkingLevels,
 	isContextOverflow,
-	isRecoverableLength,
 	isRetryableAssistantError,
 	modelsAreEqual,
 	type RetryCallbacks,
@@ -111,6 +110,11 @@ import { type BashOperations, createLocalBashOperations } from "./tools/bash.ts"
 import { createAllToolDefinitions } from "./tools/index.ts";
 import { createToolDefinitionFromAgentTool } from "./tools/tool-definition-wrapper.ts";
 import { addUsageToTotals, createUsageTotals } from "./usage-totals.ts";
+
+/** Keep this helper inside the published CLI until the minimum pi-ai dependency exports it. */
+function isRecoverableLength(message: AssistantMessage, desiredMaxOutput: number): boolean {
+	return message.stopReason === "length" && desiredMaxOutput > 0 && message.usage.output < desiredMaxOutput;
+}
 
 // ============================================================================
 // Skill Block Parsing
