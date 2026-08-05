@@ -4,6 +4,8 @@
 
 ### Changed
 
+- Changed JSON and RPC `message_update` events to emit only `assistantMessageEvent` deltas, removing cumulative message snapshots that caused quadratic output growth. Clients must assemble deltas between `message_start` and `message_end`; `message_end` remains authoritative.
+- `ModelRegistry.getApiKeyAndHeaders()` now preserves `null` provider-header deletion markers; callers forwarding headers to pi-ai may pass them through, while concrete HTTP consumers must filter deleted entries.
 - Changed interactive built-in and extension tool calls to show a compact command with orange running, green success, and red failure indicators; running output now previews only the latest five visual lines and completed output is hidden.
 
 ### Added
