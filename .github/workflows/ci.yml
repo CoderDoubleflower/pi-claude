@@ -41,5 +41,14 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Smoke-test packed CLI startup
-        run: bash scripts/smoke-packed-cli-startup.sh
+      - name: Build exact release tarball
+        id: release-package
+        shell: bash
+        run: |
+          set -euo pipefail
+          output_dir="$RUNNER_TEMP/pi-claude-release"
+          tarball="$(node scripts/build-pi-claude-release-tarball.mjs --output-dir "$output_dir")"
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke-test exact release tarball
+        run: bash scripts/smoke-packed-cli-startup.sh "${{ steps.release-package.outputs.tarball }}"
