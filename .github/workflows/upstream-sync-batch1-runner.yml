@@ -1,0 +1,21 @@
+name: Run upstream batch 1 reconciliation
+
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: sync/upstream-batch1-20260805
+          fetch-depth: 0
+          persist-credentials: true
+      - run: bash .github/scripts/upstream-batch1-reconcile.sh
