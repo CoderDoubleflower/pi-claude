@@ -1,0 +1,119 @@
+name: Finalize upstream batch 1 PR v2
+
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: finalize-upstream-batch1-pr-v2
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    if: github.event.pull_request.head.ref == 'sync/upstream-batch1-20260805'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: sync/upstream-batch1-20260805
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Remove temporary integration artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -f --ignore-unmatch \
+            .github/batch1-ci-trigger.txt \
+            .github/batch1-finalize-trigger.txt \
+            .github/scripts/upstream-batch1-model-tests.sh \
+            .github/workflows/apply-upstream-batch1-final-files.yml \
+            .github/workflows/export-upstream-batch1-final-files.yml \
+            .github/workflows/upstream-sync-batch1-model-tests.yml
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Format reconciled files
+        run: npx biome check --write packages/agent/src/agent.ts packages/coding-agent/src/core/remote-compaction/extension.ts
+
+      - name: Build workspace
+        run: npm run build
+
+      - name: Run repository checks
+        run: npm run check
+
+      - name: Run focused Vitest regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx vitest --run \
+            packages/agent/test/agent.test.ts \
+            packages/ai/test/google-shared-gemini3-unsigned-tool-call.test.ts \
+            packages/ai/test/google-shared-retry.test.ts \
+            packages/ai/test/sampling-options.test.ts \
+            packages/ai/test/validation.test.ts \
+            packages/coding-agent/test/model-resolver.test.ts \
+            packages/coding-agent/test/package-manager.test.ts \
+            packages/coding-agent/test/suite/agent-session-tool-result-images.test.ts \
+            packages/coding-agent/test/suite/regressions/6104-find-root-relativization.test.ts \
+            packages/coding-agent/test/suite/regressions/7150-rpc-prompt-during-compaction.test.ts \
+            packages/coding-agent/test/suite/regressions/7497-session-discovery-symlink.test.ts
+
+      - name: Run focused TUI node tests
+        run: node --test packages/tui/test/terminal-colors.test.ts packages/tui/test/terminal.test.ts
+
+      - name: Keep only reviewed cleanup changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python <<'PY'
+          import subprocess
+
+          allowed = {
+              ".github/batch1-ci-trigger.txt",
+              ".github/batch1-finalize-trigger.txt",
+              ".github/scripts/upstream-batch1-model-tests.sh",
+              ".github/workflows/apply-upstream-batch1-final-files.yml",
+              ".github/workflows/export-upstream-batch1-final-files.yml",
+              ".github/workflows/upstream-sync-batch1-model-tests.yml",
+              "packages/agent/src/agent.ts",
+              "packages/coding-agent/src/core/remote-compaction/extension.ts",
+          }
+          changed = subprocess.check_output(["git", "diff", "--name-only", "HEAD"], text=True).splitlines()
+          for path in changed:
+              if path not in allowed:
+                  subprocess.run(["git", "checkout", "HEAD", "--", path], check=True)
+          PY
+
+      - name: Commit clean validated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: finalize reviewed upstream fixes batch 1"
+          git push origin HEAD:sync/upstream-batch1-20260805
+
+      - name: Remove temporary default-branch finalizer
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: CoderDoubleflower/pi-claude
+        shell: bash
+        run: |
+          set -euo pipefail
+          path=.github/workflows/finalize-upstream-batch1-pr-v2.yml
+          sha=$(gh api "repos/${REPO}/contents/${path}?ref=main" --jq .sha 2>/dev/null || true)
+          if [ -n "$sha" ]; then
+            gh api --method DELETE "repos/${REPO}/contents/${path}" \
+              -f message='chore: remove temporary batch 1 finalizer' \
+              -f branch=main \
+              -f sha="$sha" >/dev/null
+          fi
