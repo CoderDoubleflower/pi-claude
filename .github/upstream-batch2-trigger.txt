@@ -1,1 +1,1 @@
-Diagnose isolated upstream batch 2 validation.
+Validate upstream batch 2 with required system tools.
