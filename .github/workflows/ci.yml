@@ -52,3 +52,12 @@ jobs:
 
       - name: Smoke-test exact release tarball
         run: bash scripts/smoke-packed-cli-startup.sh "${{ steps.release-package.outputs.tarball }}"
+
+      - name: Upload release runtime mismatch
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-claude-release-runtime-mismatch
+          path: .artifacts/release-runtime-diff.json
+          if-no-files-found: ignore
+          retention-days: 1
