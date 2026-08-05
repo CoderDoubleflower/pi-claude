@@ -46,8 +46,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p .artifacts
           output_dir="$RUNNER_TEMP/pi-claude-release"
-          tarball="$(node scripts/build-pi-claude-release-tarball.mjs --output-dir "$output_dir")"
+          tarball_path_file="$(mktemp)"
+
+          set +e
+          node scripts/build-pi-claude-release-tarball.mjs --output-dir "$output_dir" \
+            >"$tarball_path_file" \
+            2> >(tee .artifacts/build-release-tarball.log >&2)
+          status=$?
+          set -e
+
+          if [[ $status -ne 0 ]]; then
+            echo "::error::Release tarball build failed with status $status."
+            exit "$status"
+          fi
+
+          tarball="$(tail -n 1 "$tarball_path_file")"
           echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
 
       - name: Smoke-test exact release tarball
@@ -59,7 +74,8 @@ jobs:
         with:
           name: pi-claude-release-runtime-diagnostics
           path: |
+            .artifacts/build-release-tarball.log
             .artifacts/smoke-packed-cli.log
             .artifacts/release-runtime-diff.json
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 1
