@@ -1,0 +1,84 @@
+name: Monitor current pi-claude publish once
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+jobs:
+  monitor:
+    if: github.event.head_commit.message == 'chore: monitor pi-claude v0.83.13 publish'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for publish run and report result
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+          CREATED_AFTER: '2026-08-05T13:23:00Z'
+        run: |
+          set -euo pipefail
+
+          run_id=''
+          for _ in $(seq 1 60); do
+            run_id="$(
+              gh api "/repos/${REPOSITORY}/actions/workflows/publish-npm.yml/runs?event=workflow_dispatch&branch=main&per_page=20" \
+                --jq ".workflow_runs | map(select(.created_at > \"${CREATED_AFTER}\")) | sort_by(.created_at) | last | .id // empty"
+            )"
+            if [[ -n "$run_id" ]]; then
+              break
+            fi
+            sleep 5
+          done
+
+          if [[ -z "$run_id" ]]; then
+            gh api "/repos/${REPOSITORY}/issues/65/comments" \
+              -f body='Automated publish monitor could not find the dispatched workflow run.'
+            exit 1
+          fi
+
+          set +e
+          gh run watch "$run_id" --repo "$REPOSITORY" --exit-status
+          watch_status=$?
+          set -e
+
+          run_json="$(gh api "/repos/${REPOSITORY}/actions/runs/${run_id}")"
+          conclusion="$(jq -r '.conclusion // .status' <<<"$run_json")"
+          html_url="$(jq -r '.html_url' <<<"$run_json")"
+          head_sha="$(jq -r '.head_sha' <<<"$run_json")"
+
+          failed_log=''
+          if [[ "$conclusion" != 'success' ]]; then
+            set +e
+            failed_log="$(gh run view "$run_id" --repo "$REPOSITORY" --log-failed 2>&1)"
+            set -e
+            failed_log="$(printf '%s' "$failed_log" | tail -c 30000)"
+          fi
+
+          report_file="$(mktemp)"
+          {
+            echo "Automated publish run completed."
+            echo
+            echo "- Run: ${html_url}"
+            echo "- Run ID: ${run_id}"
+            echo "- Head SHA: ${head_sha}"
+            echo "- Conclusion: **${conclusion}**"
+            if [[ -n "$failed_log" ]]; then
+              echo
+              echo '<details><summary>Failed-step log</summary>'
+              echo
+              echo '```text'
+              printf '%s\n' "$failed_log"
+              echo '```'
+              echo '</details>'
+            fi
+          } > "$report_file"
+
+          gh api "/repos/${REPOSITORY}/issues/65/comments" --raw-field body="$(cat "$report_file")"
+
+          if [[ "$watch_status" -ne 0 ]]; then
+            exit "$watch_status"
+          fi
