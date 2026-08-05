@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  actions: write
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -85,3 +89,54 @@ jobs:
             .artifacts/release-runtime-diff.json
           if-no-files-found: ignore
           retention-days: 1
+
+  publish-current-once:
+    if: github.event_name == 'pull_request' && github.head_ref == 'automation/publish-v0.83.13-final-20260805'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch publish-npm.yml with retry_current=true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          dispatched_after="$(date -u +%FT%TZ)"
+          echo "dispatch_started_at=${dispatched_after}"
+
+          gh api --method POST "/repos/${REPOSITORY}/actions/workflows/publish-npm.yml/dispatches" \
+            --raw-field ref=main \
+            --field 'inputs[retry_current]=true' \
+            --field 'inputs[bump]=patch' \
+            --field 'inputs[version]='
+
+          run_id=''
+          for _ in $(seq 1 60); do
+            sleep 5
+            run_id="$(
+              gh api "/repos/${REPOSITORY}/actions/workflows/publish-npm.yml/runs?event=workflow_dispatch&branch=main&per_page=20" \
+                --jq ".workflow_runs | map(select(.created_at >= \"${dispatched_after}\")) | sort_by(.created_at) | last | .id // empty"
+            )"
+            [[ -n "$run_id" ]] && break
+          done
+
+          if [[ -z "$run_id" ]]; then
+            echo '::error::The dispatched publish workflow run could not be found.'
+            exit 1
+          fi
+
+          echo "publish_run_id=${run_id}"
+          echo "publish_run_url=https://github.com/${REPOSITORY}/actions/runs/${run_id}"
+
+          set +e
+          gh run watch "$run_id" --repo "$REPOSITORY" --exit-status
+          publish_status=$?
+          set -e
+
+          gh run view "$run_id" --repo "$REPOSITORY" \
+            --json databaseId,url,status,conclusion,event,headBranch,headSha,jobs
+
+          if [[ $publish_status -ne 0 ]]; then
+            echo '--- failed publish steps ---'
+            gh run view "$run_id" --repo "$REPOSITORY" --log-failed || true
+            exit "$publish_status"
+          fi
