@@ -56,8 +56,9 @@ jobs:
             if ! grep -qxF "$sha" <<<"$(printf '%s\n' $selected)"; then
               continue
             fi
-            if git log --format=%B | grep -qF "Upstream-Commit: $sha"; then
-              echo "Already integrated: $sha"
+            existing=$(git log --format=%H --fixed-strings --grep="Upstream-Commit: $sha" -1)
+            if [ -n "$existing" ]; then
+              echo "Already integrated: $sha as $existing"
               continue
             fi
 
@@ -73,6 +74,14 @@ jobs:
             set -e
 
             if [ "$rc" -ne 0 ]; then
+              if git diff --quiet && git diff --cached --quiet; then
+                echo "Patch is already present; skipping empty cherry-pick for $sha"
+                git cherry-pick --skip
+                git commit --allow-empty -m "chore: record integrated upstream commit" -m "Upstream-Commit: $sha"
+                integrated=1
+                continue
+              fi
+
               echo "Conflict while applying $sha"
               conflict_files=$(git diff --name-only --diff-filter=U)
               for file in $conflict_files; do
