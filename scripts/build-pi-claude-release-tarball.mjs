@@ -4,6 +4,7 @@ import { cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseNpmPackJson } from "./npm-pack-json.mjs";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -46,11 +47,8 @@ async function packWorkspace(workspace, destination) {
 		],
 		{ capture: true },
 	);
-	const parsed = JSON.parse(stdout);
-	if (!Array.isArray(parsed) || parsed.length !== 1 || typeof parsed[0]?.filename !== "string") {
-		throw new Error(`Unexpected npm pack output for ${workspace}: ${stdout}`);
-	}
-	return join(destination, parsed[0].filename);
+	const result = parseNpmPackJson(stdout, workspace);
+	return join(destination, result.filename);
 }
 
 async function extractTarball(tarball, destination) {
@@ -179,11 +177,8 @@ try {
 		["pack", "--json", "--ignore-scripts", stagePackage, `--pack-destination=${outputDir}`],
 		{ capture: true },
 	);
-	const finalParsed = JSON.parse(finalOutput);
-	if (!Array.isArray(finalParsed) || finalParsed.length !== 1 || typeof finalParsed[0]?.filename !== "string") {
-		throw new Error(`Unexpected final npm pack output: ${finalOutput}`);
-	}
-	process.stdout.write(`${join(outputDir, finalParsed[0].filename)}\n`);
+	const finalResult = parseNpmPackJson(finalOutput);
+	process.stdout.write(`${join(outputDir, finalResult.filename)}\n`);
 } finally {
 	await rm(tempRoot, { recursive: true, force: true });
 }
