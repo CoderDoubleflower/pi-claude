@@ -41,6 +41,53 @@ jobs:
           git remote add upstream https://github.com/earendil-works/pi.git 2>/dev/null || true
           git fetch upstream main --no-tags
 
+          cherry_pick_reviewed() {
+            local sha="$1"
+            local parent_fields
+            parent_fields=$(git rev-list --parents -n 1 "$sha" | awk '{print NF}')
+
+            set +e
+            if [ "$parent_fields" -gt 2 ]; then
+              git cherry-pick -m 1 "$sha"
+            else
+              git cherry-pick "$sha"
+            fi
+            local status=$?
+            set -e
+
+            if [ "$status" -eq 0 ]; then
+              return 0
+            fi
+
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+            if [ "${#conflicts[@]}" -eq 0 ]; then
+              echo "Cherry-pick failed without merge conflicts: $sha"
+              exit "$status"
+            fi
+
+            local unresolved=0
+            for path in "${conflicts[@]}"; do
+              case "$path" in
+                */CHANGELOG.md|CHANGELOG.md|*/README.md|README.md|*/docs/*)
+                  echo "Preserving fork-owned documentation: $path"
+                  git checkout --ours -- "$path"
+                  git add "$path"
+                  ;;
+                *)
+                  echo "Semantic conflict requires review: $path"
+                  unresolved=1
+                  ;;
+              esac
+            done
+
+            if [ "$unresolved" -ne 0 ]; then
+              git status --short
+              exit 1
+            fi
+
+            GIT_EDITOR=true git cherry-pick --continue
+          }
+
           sync_base="4c01c709380621c5ff2719162cd7a7973dcb2799"
           selected="
           b9d360a2c753e058a90dc0a252950631501c10d0
@@ -70,12 +117,7 @@ jobs:
               continue
             fi
             echo "Cherry-picking $sha"
-            parent_fields=$(git rev-list --parents -n 1 "$sha" | awk '{print NF}')
-            if [ "$parent_fields" -gt 2 ]; then
-              git cherry-pick -m 1 "$sha"
-            else
-              git cherry-pick "$sha"
-            fi
+            cherry_pick_reviewed "$sha"
           done
 
       - name: Remove one-shot workflow and push
