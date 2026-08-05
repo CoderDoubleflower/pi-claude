@@ -1,61 +1,55 @@
 import { describe, expect, test, vi } from "vitest";
 import { experimentalCli } from "../src/cli/experimental/cli.ts";
-import { resolveExperimentalCli } from "../src/cli/experimental/resolve.ts";
 
 const UNSUPPORTED_SERVER_OPTIONS = "The experimental server command does not support existing CLI options yet";
 const UNSUPPORTED_CLIENT_OPTIONS = "The experimental client command does not support existing CLI options yet";
 
 describe("experimental CLI command composition", () => {
 	test("composes pi command options with the existing parser", () => {
-		expect(experimentalCli.parse(["--model", "claude-sonnet", "prompt"])).toEqual({
+		const result = experimentalCli.parse([
+			"--listen",
+			"unix:///tmp/pi.sock",
+			"--auth-token",
+			"secret",
+			"--provider",
+			"anthropic",
+			"--model",
+			"claude-sonnet",
+			"--thinking",
+			"high",
+			"inspect",
+		]);
+
+		expect(result).toMatchObject({
 			ok: true,
-			command: expect.objectContaining({
+			command: {
 				command: "pi",
-				options: expect.objectContaining({ model: "claude-sonnet", initialMessage: "prompt" }),
-			}),
+				listen: [{ transport: "unix", path: "/tmp/pi.sock" }],
+				auth: { type: "token", token: "secret" },
+				options: {
+					provider: "anthropic",
+					model: "claude-sonnet",
+					thinking: "high",
+					messages: ["inspect"],
+				},
+			},
 		});
 	});
 
-	test("keeps Pi --help handling in existing CLI options", () => {
-		expect(experimentalCli.parse(["--help"])).toEqual({
+	test.each(["--help", "--version"] as const)("keeps Pi %s handling in existing CLI options", (option) => {
+		expect(experimentalCli.parse([option])).toMatchObject({
 			ok: true,
-			command: expect.objectContaining({ command: "pi", options: expect.objectContaining({ help: true }) }),
+			command: { command: "pi", options: { [option === "--help" ? "help" : "version"]: true } },
 		});
 	});
 
-	test("keeps Pi --version handling in existing CLI options", () => {
-		expect(experimentalCli.parse(["--version"])).toEqual({
-			ok: true,
-			command: expect.objectContaining({ command: "pi", options: expect.objectContaining({ version: true }) }),
-		});
-	});
-
-	test("rejects deferred server --help handling", () => {
-		expect(experimentalCli.parse(["server", "--help"])).toEqual({
-			ok: false,
-			errors: [UNSUPPORTED_SERVER_OPTIONS],
-		});
-	});
-
-	test("rejects deferred server --version handling", () => {
-		expect(experimentalCli.parse(["server", "--version"])).toEqual({
-			ok: false,
-			errors: [UNSUPPORTED_SERVER_OPTIONS],
-		});
-	});
-
-	test("rejects deferred client --help handling", () => {
-		expect(experimentalCli.parse(["client", "--help"])).toEqual({
-			ok: false,
-			errors: [UNSUPPORTED_CLIENT_OPTIONS],
-		});
-	});
-
-	test("rejects deferred client --version handling", () => {
-		expect(experimentalCli.parse(["client", "--version"])).toEqual({
-			ok: false,
-			errors: [UNSUPPORTED_CLIENT_OPTIONS],
-		});
+	test.each([
+		["server", "--help", UNSUPPORTED_SERVER_OPTIONS],
+		["server", "--version", UNSUPPORTED_SERVER_OPTIONS],
+		["client", "--help", UNSUPPORTED_CLIENT_OPTIONS],
+		["client", "--version", UNSUPPORTED_CLIENT_OPTIONS],
+	] as const)("rejects deferred %s %s handling", (command, option, error) => {
+		expect(experimentalCli.parse([command, option])).toEqual({ ok: false, errors: [error] });
 	});
 
 	test("rejects existing options that the server command does not support yet", () => {
@@ -86,30 +80,17 @@ describe("experimental CLI command composition", () => {
 		});
 	});
 
-	test("executes the parsed pi command", async () => {
-		const runPi = vi.fn();
-		await expect(resolveExperimentalCli(["prompt"], { runPi, runServer: vi.fn(), runClient: vi.fn() })).resolves.toEqual({
-			ok: true,
-			command: expect.objectContaining({ command: "pi" }),
-		});
-		expect(runPi).toHaveBeenCalledOnce();
-	});
+	test.each(["pi", "server", "client"] as const)("executes the parsed %s command", async (name) => {
+		const context = {
+			runPi: vi.fn(() => undefined),
+			runServer: vi.fn(() => undefined),
+			runClient: vi.fn(() => undefined),
+		};
+		const result = await experimentalCli.execute(name === "pi" ? [] : [name], context);
 
-	test("executes the parsed server command", async () => {
-		const runServer = vi.fn();
-		await expect(resolveExperimentalCli(["server"], { runPi: vi.fn(), runServer, runClient: vi.fn() })).resolves.toEqual({
-			ok: true,
-			command: { command: "server" },
-		});
-		expect(runServer).toHaveBeenCalledOnce();
-	});
-
-	test("executes the parsed client command", async () => {
-		const runClient = vi.fn();
-		await expect(resolveExperimentalCli(["client"], { runPi: vi.fn(), runServer: vi.fn(), runClient })).resolves.toEqual({
-			ok: true,
-			command: { command: "client" },
-		});
-		expect(runClient).toHaveBeenCalledOnce();
+		expect(result).toMatchObject({ ok: true, command: { command: name } });
+		expect(context.runPi).toHaveBeenCalledTimes(name === "pi" ? 1 : 0);
+		expect(context.runServer).toHaveBeenCalledTimes(name === "server" ? 1 : 0);
+		expect(context.runClient).toHaveBeenCalledTimes(name === "client" ? 1 : 0);
 	});
 });
