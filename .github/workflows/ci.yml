@@ -54,6 +54,31 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
+      - name: Package dependencies and Node runtime for local verification
+        if: github.head_ref == 'verify/local-container-20260805'
+        shell: bash
+        run: |
+          set -euo pipefail
+          find . -type d -name node_modules -prune -print0 > /tmp/node-modules-paths.txt
+          tar --null -T /tmp/node-modules-paths.txt -czf /tmp/pi-claude-node-modules.tar.gz
+          node_bin=$(readlink -f "$(command -v node)")
+          node_root=$(dirname "$(dirname "$node_bin")")
+          tar -C "$node_root" -czf /tmp/pi-node22-runtime.tar.gz .
+          "$node_bin" --version > /tmp/pi-node22-version.txt
+          npm --version >> /tmp/pi-node22-version.txt
+
+      - name: Upload dependencies and Node runtime
+        if: github.head_ref == 'verify/local-container-20260805'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-claude-local-deps-node22
+          path: |
+            /tmp/pi-claude-node-modules.tar.gz
+            /tmp/pi-node22-runtime.tar.gz
+            /tmp/pi-node22-version.txt
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Build
         run: npm run build
 
