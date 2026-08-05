@@ -41,5 +41,41 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Smoke-test packed CLI startup
-        run: bash scripts/smoke-packed-cli-startup.sh
+      - name: Build exact release tarball
+        id: release-package
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .artifacts
+          output_dir="$RUNNER_TEMP/pi-claude-release"
+          tarball_path_file="$(mktemp)"
+
+          set +e
+          node scripts/build-pi-claude-release-tarball.mjs --output-dir "$output_dir" \
+            >"$tarball_path_file" \
+            2> >(tee .artifacts/build-release-tarball.log >&2)
+          status=$?
+          set -e
+
+          if [[ $status -ne 0 ]]; then
+            echo "::error::Release tarball build failed with status $status."
+            exit "$status"
+          fi
+
+          tarball="$(tail -n 1 "$tarball_path_file")"
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke-test exact release tarball
+        run: bash scripts/smoke-packed-cli-startup.sh "${{ steps.release-package.outputs.tarball }}"
+
+      - name: Upload packed runtime diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-claude-release-runtime-diagnostics
+          path: |
+            .artifacts/build-release-tarball.log
+            .artifacts/smoke-packed-cli.log
+            .artifacts/release-runtime-diff.json
+          if-no-files-found: ignore
+          retention-days: 1
