@@ -19,7 +19,8 @@ fi
 
 npm install --global --ignore-scripts --prefix "$install_prefix" "$package_path"
 installed_root="$install_prefix/lib/node_modules/@doubleflower/pi-claude"
-node scripts/verify-pi-claude-release-runtime.mjs "$installed_root"
+global_node_modules_root="$(npm root --global --prefix "$install_prefix")"
+node scripts/verify-pi-claude-release-runtime.mjs "$installed_root" "$global_node_modules_root"
 
 cli="$install_prefix/bin/pi-claude"
 "$cli" --version
