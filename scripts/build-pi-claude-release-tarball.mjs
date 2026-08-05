@@ -79,8 +79,20 @@ try {
 
 	const stageManifestPath = join(stagePackage, "package.json");
 	const stageManifest = JSON.parse(await readFile(stageManifestPath, "utf8"));
-	const localRuntimePackages = new Map();
+	delete stageManifest.bundledDependencies;
+	delete stageManifest.bundleDependencies;
+	await writeFile(stageManifestPath, `${JSON.stringify(stageManifest, null, 2)}\n`);
 
+	// Restore the exact production graph represented by npm-shrinkwrap.json while
+	// package.json still matches that lock. Declaring bundled dependencies before
+	// this step triggers an npm Arborist edgesOut crash on npm 10.
+	run(
+		npmCommand,
+		["ci", "--ignore-scripts", "--omit=dev", "--no-audit", "--no-fund"],
+		{ cwd: stagePackage },
+	);
+
+	const localRuntimePackages = new Map();
 	for (const runtimePackage of runtimePackages) {
 		const tarball = await packWorkspace(runtimePackage.name, packDir);
 		const extractedPackage = await extractTarball(
@@ -88,33 +100,10 @@ try {
 			join(extractedDir, runtimePackage.name.replaceAll("/", "__")),
 		);
 		await replaceDist(runtimePackage.workspaceDir, extractedPackage);
-
-		const localManifest = JSON.parse(await readFile(join(extractedPackage, "package.json"), "utf8"));
-		stageManifest.dependencies ??= {};
-		stageManifest.dependencies[runtimePackage.name] = localManifest.version;
 		localRuntimePackages.set(runtimePackage.name, extractedPackage);
 	}
 
-	const bundledDependencies = [
-		...new Set([
-			...Object.keys(stageManifest.dependencies ?? {}),
-			...Object.keys(stageManifest.optionalDependencies ?? {}),
-		]),
-	].sort();
-	stageManifest.bundledDependencies = bundledDependencies;
-	await writeFile(stageManifestPath, `${JSON.stringify(stageManifest, null, 2)}\n`);
-
-	// Materialize the production tree from the package shrinkwrap before packing.
-	// The final tarball bundles this whole tree, so installation cannot substitute
-	// registry packages for the versions and dependency layout that were tested here.
-	run(
-		npmCommand,
-		["install", "--ignore-scripts", "--omit=dev", "--no-audit", "--no-fund"],
-		{ cwd: stagePackage },
-	);
-
-	// npm install populated registry copies of the first-party packages. Replace
-	// them with the exact packages and dist trees produced by this source build.
+	// Replace registry copies with packages and dist trees from this source build.
 	for (const runtimePackage of runtimePackages) {
 		const extractedPackage = localRuntimePackages.get(runtimePackage.name);
 		if (!extractedPackage) throw new Error(`Missing staged runtime package ${runtimePackage.name}`);
@@ -125,8 +114,17 @@ try {
 		await cp(extractedPackage, installedPackage, { recursive: true, force: true });
 	}
 
-	// npm install may normalize package.json; restore the definitive release manifest.
+	// npm pack recursively includes the transitive graph for these top-level
+	// dependencies. Writing this only after npm ci prevents npm from trying to
+	// resolve a partially materialized bundled tree.
+	stageManifest.bundledDependencies = [
+		...new Set([
+			...Object.keys(stageManifest.dependencies ?? {}),
+			...Object.keys(stageManifest.optionalDependencies ?? {}),
+		]),
+	].sort();
 	await writeFile(stageManifestPath, `${JSON.stringify(stageManifest, null, 2)}\n`);
+
 	const finalOutput = run(
 		npmCommand,
 		["pack", "--json", "--ignore-scripts", stagePackage, `--pack-destination=${outputDir}`],
