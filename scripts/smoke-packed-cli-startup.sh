@@ -11,8 +11,15 @@ cleanup() {
 }
 trap cleanup EXIT
 
-package_file="$(npm pack --ignore-scripts --workspace=@doubleflower/pi-claude --pack-destination "$pack_dir" | tail -n 1)"
-npm install --global --ignore-scripts --prefix "$install_prefix" "$pack_dir/$package_file"
+if [[ $# -gt 0 ]]; then
+  package_path="$1"
+else
+  package_path="$(node scripts/build-pi-claude-release-tarball.mjs --output-dir "$pack_dir")"
+fi
+
+npm install --global --ignore-scripts --prefix "$install_prefix" "$package_path"
+installed_root="$install_prefix/lib/node_modules/@doubleflower/pi-claude"
+node scripts/verify-pi-claude-release-runtime.mjs "$installed_root"
 
 cli="$install_prefix/bin/pi-claude"
 "$cli" --version
