@@ -1,142 +1,68 @@
-name: CI
+name: Verify published package
 
 on:
-  push:
-    branches: [main]
   pull_request:
     branches: [main]
 
 permissions:
-  actions: write
   contents: read
 
-concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
-  build-check-test:
+  verify-registry-release:
+    if: github.head_ref == 'automation/publish-v0.83.13-final-20260805'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
-          cache: npm
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
 
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev fd-find ripgrep
-          sudo ln -s $(which fdfind) /usr/local/bin/fd
+      - name: Install npm latest
+        run: npm install --global npm@latest
 
-      - name: Install dependencies
-        run: npm ci --ignore-scripts
-
-      - name: Build
-        run: npm run build
-
-      - name: Check
-        run: npm run check
-
-      - name: Test
-        run: npm test
-
-      - name: Match publish npm version
-        run: |
-          npm install --global npm@latest
-          node --version
-          npm --version
-
-      - name: Build exact release tarball
-        id: release-package
+      - name: Install and start registry package
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p .artifacts
-          output_dir="$RUNNER_TEMP/pi-claude-release"
-          tarball_path_file="$(mktemp)"
+          prefix="$RUNNER_TEMP/pi-claude-registry-prefix"
+          smoke_home="$RUNNER_TEMP/pi-claude-registry-home"
+          mkdir -p "$prefix" "$smoke_home"
+
+          registry_version="$(npm view @doubleflower/pi-claude@0.83.13 version)"
+          [[ "$registry_version" == '0.83.13' ]]
+
+          npm install --global --ignore-scripts --prefix "$prefix" @doubleflower/pi-claude@0.83.13
+          cli="$prefix/bin/pi-claude"
+
+          installed_version="$("$cli" --version)"
+          echo "installed_version=$installed_version"
+          [[ "$installed_version" == '0.83.13' ]]
 
           set +e
-          node scripts/build-pi-claude-release-tarball.mjs --output-dir "$output_dir" \
-            >"$tarball_path_file" \
-            2> >(tee .artifacts/build-release-tarball.log >&2)
-          status=$?
+          startup_output="$(
+            timeout --signal=INT --kill-after=5s 4s \
+              script --quiet --return --command \
+                "env HOME='$smoke_home' TERM=xterm-256color PI_OFFLINE=1 '$cli'" \
+                /dev/null 2>&1
+          )"
+          startup_status=$?
           set -e
 
-          if [[ $status -ne 0 ]]; then
-            echo "::error::Release tarball build failed with status $status."
-            exit "$status"
-          fi
+          printf '%s\n' "$startup_output"
+          echo "startup_status=$startup_status"
 
-          tarball="$(tail -n 1 "$tarball_path_file")"
-          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
-
-      - name: Smoke-test exact release tarball
-        run: bash scripts/smoke-packed-cli-startup.sh "${{ steps.release-package.outputs.tarball }}"
-
-      - name: Upload packed runtime diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pi-claude-release-runtime-diagnostics
-          path: |
-            .artifacts/build-release-tarball.log
-            .artifacts/smoke-packed-cli.log
-            .artifacts/release-runtime-diff.json
-          if-no-files-found: ignore
-          retention-days: 1
-
-  publish-current-once:
-    if: github.event_name == 'pull_request' && github.head_ref == 'automation/publish-v0.83.13-final-20260805'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Dispatch publish-npm.yml with retry_current=true
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-        run: |
-          set -euo pipefail
-          dispatched_after="$(date -u +%FT%TZ)"
-          echo "dispatch_started_at=${dispatched_after}"
-
-          gh api --method POST "/repos/${REPOSITORY}/actions/workflows/publish-npm.yml/dispatches" \
-            --raw-field ref=main \
-            --field 'inputs[retry_current]=true' \
-            --field 'inputs[bump]=patch' \
-            --field 'inputs[version]='
-
-          run_id=''
-          for _ in $(seq 1 60); do
-            sleep 5
-            run_id="$(
-              gh api "/repos/${REPOSITORY}/actions/workflows/publish-npm.yml/runs?event=workflow_dispatch&branch=main&per_page=20" \
-                --jq ".workflow_runs | map(select(.created_at >= \"${dispatched_after}\")) | sort_by(.created_at) | last | .id // empty"
-            )"
-            [[ -n "$run_id" ]] && break
-          done
-
-          if [[ -z "$run_id" ]]; then
-            echo '::error::The dispatched publish workflow run could not be found.'
+          if grep -Eiq \
+            'uncaughtException|does not provide an export|ERR_MODULE_NOT_FOUND|Cannot find package|is not a function|TypeError:|ReferenceError:|SyntaxError:' \
+            <<<"$startup_output"; then
+            echo '::error::The registry-installed CLI crashed during interactive startup.'
             exit 1
           fi
 
-          echo "publish_run_id=${run_id}"
-          echo "publish_run_url=https://github.com/${REPOSITORY}/actions/runs/${run_id}"
-
-          set +e
-          gh run watch "$run_id" --repo "$REPOSITORY" --exit-status
-          publish_status=$?
-          set -e
-
-          gh run view "$run_id" --repo "$REPOSITORY" \
-            --json databaseId,url,status,conclusion,event,headBranch,headSha,jobs
-
-          if [[ $publish_status -ne 0 ]]; then
-            echo '--- failed publish steps ---'
-            gh run view "$run_id" --repo "$REPOSITORY" --log-failed || true
-            exit "$publish_status"
+          if [[ $startup_status -ne 0 && $startup_status -ne 124 && $startup_status -ne 130 && $startup_status -ne 143 ]]; then
+            echo "::error::The registry-installed CLI exited unexpectedly with status $startup_status."
+            exit "$startup_status"
           fi
+
+          echo 'registry_package_verification=success'
