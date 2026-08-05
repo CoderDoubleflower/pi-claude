@@ -1,0 +1,96 @@
+name: Batch 2 CI Baseline Fix
+
+on:
+  push:
+    branches:
+      - sync/upstream-batch2-20260805
+
+permissions:
+  contents: write
+
+concurrency:
+  group: batch2-ci-baseline-fix
+  cancel-in-progress: false
+
+jobs:
+  fix-and-verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: sync/upstream-batch2-20260805
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply exact fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          generator = Path("packages/ai/scripts/generate-models.ts")
+          text = generator.read_text()
+          old = 'model.provider === "groq" && model.id === "qwen/qwen3-32b"'
+          new = 'model.provider === "groq" && model.id === "qwen/qwen3.6-27b"'
+          if text.count(old) != 1:
+              raise SystemExit(f"expected exactly one Groq mapping occurrence, found {text.count(old)}")
+          generator.write_text(text.replace(old, new, 1))
+
+          footer_test = Path("packages/coding-agent/test/footer-width.test.ts")
+          text = footer_test.read_text()
+          needle = '''\t\tsessionManager: {
+          \t\t\tgetEntries: () => entries,
+          \t\t\tgetSessionName: () => options.sessionName,
+          \t\t\tgetCwd: () => "/tmp/project",
+          \t\t},
+          \t\tgetContextUsage: () => ({ contextWindow: 200_000, percent: 12.3 }),'''
+          replacement = '''\t\tsessionManager: {
+          \t\t\tgetEntries: () => entries,
+          \t\t\tgetSessionName: () => options.sessionName,
+          \t\t\tgetCwd: () => "/tmp/project",
+          \t\t},
+          \t\tsettingsManager: {
+          \t\t\tgetStatusLine: () => undefined,
+          \t\t},
+          \t\tgetContextUsage: () => ({ contextWindow: 200_000, percent: 12.3 }),'''
+          if text.count(needle) != 1:
+              raise SystemExit(f"expected exactly one footer session mock occurrence, found {text.count(needle)}")
+          footer_test.write_text(text.replace(needle, replacement, 1))
+          PY
+
+          rm .github/workflows/batch2-fix-ci-baselines.yml
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Format changed files
+        run: npx biome check --write packages/ai/scripts/generate-models.ts packages/coding-agent/test/footer-width.test.ts
+
+      - name: Create clean fix commit
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/ai/scripts/generate-models.ts packages/coding-agent/test/footer-width.test.ts .github/workflows/batch2-fix-ci-baselines.yml
+          git commit -m "test: stabilize generated model and footer baselines"
+
+      - name: Reproduce generated model path
+        run: npm run build --workspace @earendil-works/pi-ai
+
+      - name: Test Groq reasoning mapping
+        run: npm exec --workspace @earendil-works/pi-ai -- vitest --run test/openai-completions-tool-choice.test.ts
+
+      - name: Test footer width mock
+        run: npm exec --workspace @doubleflower/pi-claude -- vitest --run test/footer-width.test.ts
+
+      - name: Discard generated test artifacts
+        run: git reset --hard HEAD
+
+      - name: Push clean commit
+        run: git push origin HEAD:sync/upstream-batch2-20260805
