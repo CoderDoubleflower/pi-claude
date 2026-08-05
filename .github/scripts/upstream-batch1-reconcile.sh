@@ -56,7 +56,8 @@ npx vitest --run \
   packages/coding-agent/test/suite/agent-session-tool-result-images.test.ts \
   packages/coding-agent/test/suite/regressions/6104-find-root-relativization.test.ts \
   packages/coding-agent/test/suite/regressions/7150-rpc-prompt-during-compaction.test.ts \
-  packages/coding-agent/test/suite/regressions/7497-session-discovery-symlink.test.ts \
+  packages/coding-agent/test/suite/regressions/7497-session-discovery-symlink.test.ts
+node --test --test-reporter=dot --test-reporter-destination=stdout \
   packages/tui/test/terminal-colors.test.ts \
   packages/tui/test/terminal.test.ts
 
