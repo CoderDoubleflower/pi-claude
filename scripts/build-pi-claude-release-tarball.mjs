@@ -105,6 +105,14 @@ try {
 
 	const stageManifestPath = join(stagePackage, "package.json");
 	const stageShrinkwrapPath = join(stagePackage, "npm-shrinkwrap.json");
+	const sourceShrinkwrapPath = join(repoRoot, "packages/coding-agent/npm-shrinkwrap.json");
+
+	// npm versions differ on whether a workspace-level npm-shrinkwrap.json is
+	// included by `npm pack --workspace`. The release workflow generates and
+	// validates this source file immediately before packing, so copy that exact
+	// lock into the staged package instead of relying on npm's pack selection.
+	await cp(sourceShrinkwrapPath, stageShrinkwrapPath, { force: true });
+
 	const stageManifest = JSON.parse(await readFile(stageManifestPath, "utf8"));
 	const stageShrinkwrap = JSON.parse(await readFile(stageShrinkwrapPath, "utf8"));
 	stageManifest.dependencies ??= {};
@@ -178,7 +186,14 @@ try {
 		{ capture: true },
 	);
 	const finalResult = parseNpmPackJson(finalOutput);
-	process.stdout.write(`${join(outputDir, finalResult.filename)}\n`);
+	const finalTarball = join(outputDir, finalResult.filename);
+	const archiveEntries = run("tar", ["-tzf", finalTarball], { capture: true })
+		.split(/\r?\n/u)
+		.filter(Boolean);
+	if (!archiveEntries.includes("package/npm-shrinkwrap.json")) {
+		throw new Error(`Final release tarball is missing package/npm-shrinkwrap.json: ${finalTarball}`);
+	}
+	process.stdout.write(`${finalTarball}\n`);
 } finally {
 	await rm(tempRoot, { recursive: true, force: true });
 }
