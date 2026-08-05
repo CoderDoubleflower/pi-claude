@@ -17,6 +17,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Checkout exact merged source for local verification
+        if: github.head_ref == 'verify/local-container-20260805'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 23e5781984080c96982b3baae412db86da0098d1
+          path: _local_verification_source
+          fetch-depth: 1
+
+      - name: Package exact merged source
+        if: github.head_ref == 'verify/local-container-20260805'
+        shell: bash
+        run: tar -C _local_verification_source --exclude=.git -czf /tmp/pi-claude-source-23e5781.tar.gz .
+
+      - name: Upload exact merged source
+        if: github.head_ref == 'verify/local-container-20260805'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pi-claude-source-23e5781
+          path: /tmp/pi-claude-source-23e5781.tar.gz
+          retention-days: 1
+          if-no-files-found: error
+
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
