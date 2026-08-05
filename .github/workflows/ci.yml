@@ -40,3 +40,6 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Smoke-test packed CLI startup
+        run: bash scripts/smoke-packed-cli-startup.sh
