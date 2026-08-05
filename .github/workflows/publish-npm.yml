@@ -94,6 +94,21 @@ jobs:
           node scripts/generate-coding-agent-shrinkwrap.mjs
           node scripts/generate-coding-agent-install-lock.mjs
 
+      - name: Commit prepared release
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          if ! git diff --quiet --exit-code; then
+            git add -A
+            git commit -m "Release pi-claude v${RELEASE_VERSION}"
+            git pull --rebase origin main
+            git push origin HEAD:main
+          else
+            echo "No release metadata changes to commit."
+          fi
+
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
@@ -120,48 +135,17 @@ jobs:
           npm run check:shrinkwrap
           npm run check:install-lock:coding-agent
 
-      - name: Validate npm package contents
-        run: npm pack --dry-run --ignore-scripts --workspace=@doubleflower/pi-claude
-
-      - name: Smoke-test packed CLI startup
+      - name: Build exact release tarball
         shell: bash
         run: |
           set -euo pipefail
+          output_dir="$RUNNER_TEMP/pi-claude-release"
+          tarball="$(node scripts/build-pi-claude-release-tarball.mjs --output-dir "$output_dir")"
+          echo "RELEASE_TARBALL=$tarball" >> "$GITHUB_ENV"
+          npm pack --json --dry-run --ignore-scripts "$tarball"
 
-          pack_dir="$RUNNER_TEMP/pi-claude-pack"
-          install_prefix="$RUNNER_TEMP/pi-claude-smoke-prefix"
-          smoke_home="$RUNNER_TEMP/pi-claude-smoke-home"
-          mkdir -p "$pack_dir" "$install_prefix" "$smoke_home"
-
-          package_file="$(npm pack --ignore-scripts --workspace=@doubleflower/pi-claude --pack-destination "$pack_dir" | tail -n 1)"
-          npm install --global --ignore-scripts --prefix "$install_prefix" "$pack_dir/$package_file"
-
-          cli="$install_prefix/bin/pi-claude"
-          "$cli" --version
-
-          set +e
-          startup_output="$(
-            timeout --signal=INT --kill-after=5s 4s \
-              script --quiet --return --command \
-                "env HOME='$smoke_home' TERM=xterm-256color PI_OFFLINE=1 '$cli'" \
-                /dev/null 2>&1
-          )"
-          startup_status=$?
-          set -e
-
-          printf '%s\n' "$startup_output"
-
-          if grep -Eiq \
-            'uncaughtException|does not provide an export|ERR_MODULE_NOT_FOUND|Cannot find package|is not a function|TypeError:|ReferenceError:|SyntaxError:' \
-            <<<"$startup_output"; then
-            echo '::error::The packed CLI crashed during interactive startup.'
-            exit 1
-          fi
-
-          if [[ $startup_status -ne 0 && $startup_status -ne 124 && $startup_status -ne 130 && $startup_status -ne 143 ]]; then
-            echo "::error::The packed CLI exited unexpectedly with status $startup_status."
-            exit "$startup_status"
-          fi
+      - name: Smoke-test exact release tarball
+        run: bash scripts/smoke-packed-cli-startup.sh "$RELEASE_TARBALL"
 
       - name: Check npm registry state
         id: registry
@@ -179,24 +163,8 @@ jobs:
             echo 'version_exists=false' >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Commit prepared release
-        if: github.event_name == 'workflow_dispatch'
-        shell: bash
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          if ! git diff --quiet --exit-code; then
-            git add -A
-            git commit -m "Release pi-claude v${RELEASE_VERSION}"
-            git pull --rebase origin main
-            git push origin HEAD:main
-          else
-            echo "No release metadata changes to commit."
-          fi
-
       - name: Publish first package version with npm token
         if: steps.registry.outputs.package_exists == 'false' && steps.registry.outputs.version_exists == 'false'
-        working-directory: packages/coding-agent
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         shell: bash
@@ -207,7 +175,7 @@ jobs:
           fi
 
           set +e
-          output="$(npm publish --access public --provenance --ignore-scripts 2>&1)"
+          output="$(npm publish "$RELEASE_TARBALL" --access public --provenance --ignore-scripts 2>&1)"
           status=$?
           set -e
           printf '%s\n' "$output"
@@ -221,8 +189,7 @@ jobs:
 
       - name: Publish existing package with npm trusted publishing
         if: steps.registry.outputs.package_exists == 'true' && steps.registry.outputs.version_exists == 'false'
-        working-directory: packages/coding-agent
-        run: npm publish --access public --ignore-scripts
+        run: npm publish "$RELEASE_TARBALL" --access public --ignore-scripts
 
       - name: Skip already published version
         if: steps.registry.outputs.version_exists == 'true'
